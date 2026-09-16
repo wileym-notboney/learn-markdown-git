@@ -1,0 +1,631 @@
+#!/usr/bin/env python3
+# ABOUTME: Checks a learner's progress through the lessons by reading files and Git history.
+# ABOUTME: Usage: python tools/check.py [NN | all | hint NN]. Read-only apart from .learning/progress.json.
+"""Educational checker for the Markdown + Git course.
+
+Each check is a small function registered with the lesson it belongs to and
+the concept it tests. A check returns None when satisfied, or a
+(problem, look, try) triple: what is wrong, a command to inspect the state,
+and what to do about it. review.py imports CHECKS to map failures to concepts.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+from collections import namedtuple
+from datetime import datetime, timezone
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROGRESS = os.path.join(ROOT, ".learning", "progress.json")
+CURRICULUM = os.path.join(ROOT, "tools", "curriculum.json")
+PROTECTED = ["lessons", "tools", "reinforcement", "examples", "README.md",
+             "START_HERE.md", "AI_TUTOR.md", "CLAUDE.md"]
+LAZY_SUBJECTS = {"update", "updates", "fix", "fixes", "stuff", "changes", "change",
+                 "wip", "asdf", "test", "commit", "edit", "edits", "done", "misc"}
+
+Check = namedtuple("Check", "lesson id concept desc fn")
+CHECKS = []
+
+
+def check(lesson, cid, concept, desc):
+    """Register a check function under a lesson id and the concept it tests."""
+    def register(fn):
+        CHECKS.append(Check(lesson, cid, concept, desc, fn))
+        return fn
+    return register
+
+
+# ---------------------------------------------------------------- helpers
+
+def git(*args):
+    """Run git in the course folder; return stdout, or '' if git failed."""
+    result = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+BASELINE = {"commit": ""}
+
+
+def baseline():
+    """The commit the learner started from: recorded on their first check run, else the root commit."""
+    if not BASELINE["commit"]:
+        lines = git("rev-list", "--max-parents=0", "HEAD").splitlines()
+        BASELINE["commit"] = lines[-1] if lines else ""
+    return BASELINE["commit"]
+
+
+def learner_commits(*paths, merges=None):
+    """Subjects of commits made after the learner's baseline, newest first."""
+    flag = {True: ["--merges"], False: ["--no-merges"], None: []}[merges]
+    out = git("log", "--format=%s", *flag, f"{baseline()}..HEAD", "--", *paths)
+    return out.splitlines() if out else []
+
+
+def merge_touching(path):
+    """Merge commits (after the initial commit) whose result changes `path` relative to their first parent."""
+    hashes = git("log", "--format=%H", "--merges", f"{baseline()}..HEAD").splitlines()
+    return [h for h in hashes if git("diff", "--name-only", f"{h}^1", h, "--", path)]
+
+
+def read(relpath):
+    path = os.path.join(ROOT, relpath)
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def has(pattern, text):
+    return re.search(pattern, text, re.MULTILINE) is not None
+
+
+def broken_links(folder):
+    """Relative links in every .md under folder whose target file does not exist."""
+    broken = []
+    for dirpath, _, files in os.walk(os.path.join(ROOT, folder)):
+        for name in files:
+            if name.endswith(".md"):
+                path = os.path.join(dirpath, name)
+                broken += _broken_in(path)
+    return broken
+
+
+def _broken_in(path):
+    text = read(os.path.relpath(path, ROOT)) or ""
+    found = []
+    for target in re.findall(r"\]\(([^)\s]+)\)", text):
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        clean = target.split("#")[0]
+        if clean and not os.path.exists(os.path.join(os.path.dirname(path), clean)):
+            found.append(f"{os.path.relpath(path, ROOT)} -> {target}")
+    return found
+
+
+def tracked(relpath):
+    return git("ls-files", "--error-unmatch", relpath) != ""
+
+
+def staged(relpath):
+    return relpath in git("diff", "--name-only", "--cached").splitlines()
+
+
+def lazy_subjects(subjects):
+    bad = []
+    for s in subjects:
+        words = s.strip().lower()
+        if len(s) > 72 or words in LAZY_SUBJECTS or len(words) < 6 or not s[:1].isupper():
+            bad.append(s)
+    return bad
+
+
+# ---------------------------------------------------------------- lesson 00
+
+@check("00", "00.hello.exists", "terminal", "workspace/hello.md exists")
+def _():
+    if read("workspace/hello.md") is None:
+        return ("workspace/hello.md was not found", "ls workspace",
+                "Create the file in your editor and save it inside the workspace folder (Exercise 0.1)")
+
+
+@check("00", "00.hello.heading", "headings", "workspace/hello.md starts with a level-1 heading")
+def _():
+    text = read("workspace/hello.md") or ""
+    if not has(r"^# \S", text):
+        return ("No line starting with '# ' (hash, space, text) found", "cat workspace/hello.md",
+                "The first line should be '# Hello' with a space after the #")
+
+
+# ---------------------------------------------------------------- lesson 01
+
+PROFILE = "workspace/profile.md"
+
+
+def profile_check(cid, concept, desc, pattern, problem, tip):
+    @check("01", cid, concept, desc)
+    def _():
+        text = read(PROFILE)
+        if text is None:
+            return (f"{PROFILE} was not found", "ls workspace", "Create it (Exercise 1.1)")
+        if not has(pattern, text):
+            return (problem, f"cat {PROFILE}", tip)
+
+
+profile_check("01.profile.h1", "headings", "has a level-1 heading", r"^# \S",
+              "no '# ' heading", "Start the file with '# Your name'")
+profile_check("01.profile.h2", "headings", "has at least two level-2 headings", r"^## \S[\s\S]*^## \S",
+              "fewer than two '## ' headings", "Add '## About' and '## Tools I use'")
+profile_check("01.profile.bold", "emphasis", "has bold text", r"\*\*\S[^*]*\S\*\*|__\S[^_]*\S__",
+              "no **bold** text", "Wrap a word in double stars with no spaces inside: **word**")
+profile_check("01.profile.italic", "emphasis", "has italic text", r"(?<!\*)\*[^*\s][^*]*\*(?!\*)|(?<!_)_[^_\s][^_]*_(?!_)",
+              "no *italic* text", "Wrap a word in single stars: *word*")
+profile_check("01.profile.inline-code", "inline-code", "has inline code", r"`[^`\n]+`",
+              "no `inline code`", "Wrap a command or program name in backticks")
+profile_check("01.profile.list", "lists", "has a list", r"^\s*([-*+]|\d+\.) \S",
+              "no list found", "Lines starting with '- ' or '1. '")
+profile_check("01.profile.nested", "lists", "has a nested list item", r"^\s*([-*+]|\d+\.) \S.*\n(\s*([-*+]|\d+\.) .*\n)*?\s{2,}([-*+]|\d+\.) \S",
+              "no indented list item under another item", "Indent a '- ' line by two or more spaces below a list item")
+profile_check("01.profile.code-block", "code-blocks", "has a fenced code block", r"^```[\s\S]*?^```",
+              "no fenced code block (three backticks, content, three backticks)", "See Exercise 1.2")
+profile_check("01.profile.link", "links", "has a link", r"(?<!!)\[[^\]]+\]\([^)\s]+\)",
+              "no [text](url) link", "Add a link in the Links section (Exercise 1.3)")
+profile_check("01.profile.image", "images", "has an image with alt text", r"!\[[^\]]+\]\([^)\s]+\)",
+              "no ![alt](url) image with non-empty alt text", "Images need text inside the square brackets")
+profile_check("01.profile.blockquote", "blockquotes", "has a blockquote", r"^> \S",
+              "no line starting with '> '", "Add a quote line beginning with '> '")
+profile_check("01.profile.hr", "horizontal-rules", "has a horizontal rule", r"^(---|\*\*\*|___)\s*$",
+              "no '---' on a line by itself", "Add a line containing only --- with blank lines around it")
+profile_check("01.profile.escape", "escaping", "has an escaped character", r"\\[*#`_]",
+              "no backslash-escaped symbol", r"Write \* to show a literal asterisk")
+
+
+# ---------------------------------------------------------------- lesson 02
+
+NOTES = "workspace/notes/README.md"
+
+
+@check("02", "02.notes.exists", "readme-structure", "workspace/notes/README.md exists with a title")
+def _():
+    text = read(NOTES)
+    if text is None or not has(r"^# \S", text):
+        return (f"{NOTES} missing or has no '# ' title", "ls workspace/notes", "Create it (Exercise 2.1)")
+
+
+@check("02", "02.notes.table", "tables", "a table with a separator row exists in the notes")
+def _():
+    texts = [read(NOTES) or "", read("workspace/notes/git-commands.md") or ""]
+    if not any(has(r"^\|.*\|\s*\n\|?\s*:?-{3,}", t) for t in texts):
+        return ("no table found (needs a header row and a |---|---| row under it)",
+                f"cat {NOTES}", "See Tables in Lesson 02 Concepts")
+
+
+@check("02", "02.notes.checklist", "checklists", "a checklist exists in the notes index")
+def _():
+    if not has(r"^\s*- \[[ x]\] \S", read(NOTES) or ""):
+        return ("no '- [ ]' or '- [x]' items", f"cat {NOTES}", "Add the lesson progress checklist")
+
+
+@check("02", "02.notes.second-file", "relative-links", "workspace/notes/git-commands.md exists and is linked from the index")
+def _():
+    if read("workspace/notes/git-commands.md") is None:
+        return ("workspace/notes/git-commands.md not found", "ls workspace/notes", "Create it (Exercise 2.2)")
+    if "git-commands.md" not in (read(NOTES) or ""):
+        return ("index does not link to git-commands.md", f"cat {NOTES}", "Add [Git commands](git-commands.md)")
+
+
+@check("02", "02.notes.link-up", "relative-links", "the index links up to ../profile.md")
+def _():
+    if "../profile.md" not in (read(NOTES) or ""):
+        return ("no link to ../profile.md in the index", f"cat {NOTES}",
+                "From inside notes/, the profile is one folder up: [My profile](../profile.md)")
+
+
+@check("02", "02.notes.links-resolve", "relative-links", "every relative link under workspace/notes points at a real file")
+def _():
+    bad = broken_links("workspace/notes")
+    if bad:
+        return ("broken links: " + "; ".join(bad), "ls workspace workspace/notes",
+                "Paths are relative to the file the link is in, not to your terminal")
+
+
+# ---------------------------------------------------------------- lesson 03
+
+def commit_touching(lesson, cid, path, what):
+    @check(lesson, cid, "commit", f"a commit adds {what}")
+    def _():
+        if not tracked(path if not path.endswith("/") else path + "README.md"):
+            return (f"{what} is not tracked by Git yet", "git status",
+                    f"git add {path.rstrip('/')} then git commit -m \"...\"")
+        if not learner_commits(path):
+            return (f"no commit of yours touches {what}", f"git log --oneline -- {path}",
+                    "Stage it and commit it")
+
+
+commit_touching("03", "03.commit.hello", "workspace/hello.md", "workspace/hello.md")
+commit_touching("03", "03.commit.profile", "workspace/profile.md", "workspace/profile.md")
+commit_touching("03", "03.commit.notes", "workspace/notes/", "the workspace/notes folder")
+
+
+@check("03", "03.commit.separate", "commit", "hello, profile, and notes were committed separately")
+def _():
+    subjects = learner_commits()
+    if len(subjects) < 3:
+        return (f"only {len(subjects)} commit(s) of yours so far; expected at least three",
+                "git log --oneline", "One commit per file/folder (Exercise 3.2)")
+
+
+@check("03", "03.clean", "working-tree", "working tree is clean (everything committed)")
+def _():
+    dirty = [l for l in git("status", "--porcelain", "--", "workspace").splitlines()
+             if not l.startswith("??")]
+    if dirty:
+        return ("some tracked files in workspace/ are modified or staged but not committed",
+                "git status", "Commit them, or git restore them if the change was accidental")
+
+
+# ---------------------------------------------------------------- lesson 04
+
+@check("04", "04.messages.quality", "commit-messages", "recent commit subjects are descriptive")
+def _():
+    recent = [s for s in learner_commits()[:6] if not s.startswith("Revert")]
+    bad = lazy_subjects(recent)
+    if bad:
+        return ("these subjects are too short, too long, lowercase, or say nothing: " + "; ".join(repr(b) for b in bad),
+                "git log --oneline -6", "Imperative, capitalised, under 72 characters, says what changed")
+
+
+@check("04", "04.commits.two-more", "selective-staging", "two more commits exist after Lesson 03 (profile edit, notes edit)")
+def _():
+    if len(learner_commits(PROFILE)) < 2 or len(learner_commits(NOTES)) < 2:
+        return ("profile.md and notes/README.md should each have at least two commits by now",
+                f"git log --oneline -- {PROFILE}; git log --oneline -- {NOTES}",
+                "Exercise 4.1: edit both, then commit each separately")
+
+
+@check("04", "04.restore.hello", "git-restore", "workspace/hello.md matches its committed version")
+def _():
+    if git("diff", "--name-only", "--", "workspace/hello.md") or staged("workspace/hello.md"):
+        return ("hello.md differs from the last commit", "git diff workspace/hello.md",
+                "Exercise 4.2 ends with git restore workspace/hello.md")
+
+
+@check("04", "04.scratch.untracked", "unstaging", "workspace/scratch.md exists, is untracked, and is not staged")
+def _():
+    if read("workspace/scratch.md") is None:
+        return ("workspace/scratch.md not found", "ls workspace", "Create it (Exercise 4.3)")
+    if tracked("workspace/scratch.md") or staged("workspace/scratch.md"):
+        return ("scratch.md is staged or committed; it should be untracked", "git status",
+                "git restore --staged workspace/scratch.md (if staged). If committed, see Common Mistakes 4.3")
+
+
+# ---------------------------------------------------------------- lesson 05
+
+@check("05", "05.reading-list.merged", "git-merge", "workspace/reading-list.md is on main")
+def _():
+    if git("branch", "--show-current") != "main":
+        return ("you are not on main", "git branch --show-current", "git switch main")
+    if not tracked("workspace/reading-list.md"):
+        return ("reading-list.md is not on main", "git log --oneline --graph --all",
+                "Commit it on the branch, then on main run git merge reading-list")
+
+
+@check("05", "05.reading-list.indexed", "relative-links", "the notes index links to reading-list.md")
+def _():
+    if "reading-list.md" not in (read(NOTES) or ""):
+        return ("notes/README.md does not mention reading-list.md", f"cat {NOTES}",
+                "Add it to the Files list (step 5) and commit")
+
+
+@check("05", "05.branch.deleted", "branch-delete", "the reading-list branch was deleted after merging")
+def _():
+    if git("branch", "--list", "reading-list"):
+        return ("branch reading-list still exists", "git branch",
+                "After merging: git branch -d reading-list")
+
+
+# ---------------------------------------------------------------- lesson 06
+
+FAVES = "workspace/favorites.md"
+
+
+@check("06", "06.merge.commit", "merge-conflicts", "a merge commit touches favorites.md")
+def _():
+    if not merge_touching(FAVES):
+        return ("no merge commit involving favorites.md", "git log --oneline --graph -6",
+                "Complete the merge: resolve, git add, git commit (Exercise 6.1)")
+
+
+@check("06", "06.merge.no-markers", "conflict-markers", "favorites.md has no conflict markers")
+def _():
+    if has(r"^(<<<<<<<|=======|>>>>>>>)", read(FAVES) or ""):
+        return ("conflict markers remain in favorites.md", f"cat {FAVES}",
+                "Remove the <<<<<<< ======= >>>>>>> lines and the rejected version, then commit")
+
+
+@check("06", "06.merge.finished", "merge-abort", "no merge is in progress and the practice branch is gone")
+def _():
+    if os.path.exists(os.path.join(ROOT, ".git", "MERGE_HEAD")):
+        return ("a merge is still in progress", "git status", "git add the file and git commit, or git merge --abort")
+    if git("branch", "--list", "conflict-practice"):
+        return ("branch conflict-practice still exists", "git branch", "git branch -d conflict-practice")
+
+
+# ---------------------------------------------------------------- lesson 07
+
+@check("07", "07.remote.origin", "remotes", "a remote named origin exists")
+def _():
+    if "origin" not in git("remote").splitlines():
+        return ("no remote called origin", "git remote -v",
+                "git remote add origin ../learn-git-remote.git (Exercise 7.1)")
+
+
+@check("07", "07.remote.pushed", "push", "main has been pushed and has not diverged from origin/main")
+def _():
+    if not git("rev-parse", "--verify", "origin/main"):
+        return ("origin/main does not exist; nothing has been pushed", "git log --oneline --all -3",
+                "git push -u origin main")
+    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", "origin/main", "main"], cwd=ROOT)
+    if ancestor.returncode != 0:
+        return ("origin/main has commits that main does not", "git status", "git pull, resolve if needed, then git push")
+
+
+@check("07", "07.remote.pulled", "pull", "reading-list.md was changed by a commit made in the clone")
+def _():
+    if len(learner_commits("workspace/reading-list.md")) < 2:
+        return ("reading-list.md has only its original commit", "git log --oneline -- workspace/reading-list.md",
+                "Commit a change in ../learn-git-clone, push there, then git pull here")
+
+
+# ---------------------------------------------------------------- lesson 08
+
+PROJECT = "workspace/project"
+
+
+@check("08", "08.project.files", "readme-structure", "workspace/project/ has a README and at least one other Markdown file")
+def _():
+    if read(f"{PROJECT}/README.md") is None:
+        return (f"{PROJECT}/README.md not found", "ls workspace/project", "Create it on the docs-improvements branch")
+    others = [f for f in os.listdir(os.path.join(ROOT, PROJECT)) if f.endswith(".md") and f != "README.md"]
+    if not others:
+        return ("only README.md in workspace/project/", "ls workspace/project", "Add INSTALL.md and CHANGELOG.md")
+
+
+@check("08", "08.project.links", "relative-links", "links inside workspace/project/ resolve")
+def _():
+    bad = broken_links(PROJECT)
+    if bad:
+        return ("broken links: " + "; ".join(bad), "ls workspace/project", "Relative to the linking file")
+    if not re.search(r"\]\((?!http)[^)]+\.md\)", read(f"{PROJECT}/README.md") or ""):
+        return ("README.md does not link to another file", f"cat {PROJECT}/README.md", "Link INSTALL.md and CHANGELOG.md")
+
+
+@check("08", "08.project.commits", "logical-commits", "at least three commits touch workspace/project/")
+def _():
+    n = len(learner_commits(PROJECT))
+    if n < 3:
+        return (f"only {n} commit(s) touch workspace/project", f"git log --oneline -- {PROJECT}",
+                "One commit per file is the habit being practised")
+
+
+@check("08", "08.glossary.term", "logical-commits", "GLOSSARY.md gained a term")
+def _():
+    if not git("diff", "--numstat", baseline(), "HEAD", "--", "GLOSSARY.md"):
+        return ("GLOSSARY.md is unchanged since the course started", "git log --oneline -- GLOSSARY.md",
+                "Add one table row and commit it on the branch")
+
+
+@check("08", "08.merge.no-ff", "no-ff", "docs-improvements was merged with a merge commit")
+def _():
+    if not any("docs-improvements" in s for s in learner_commits(merges=True)):
+        return ("no merge commit mentioning docs-improvements", "git log --oneline --graph -8",
+                "On main: git merge --no-ff docs-improvements")
+    if git("branch", "--list", "docs-improvements"):
+        return ("branch docs-improvements still exists", "git branch", "git branch -d docs-improvements")
+
+
+@check("08", "08.messages.quality", "commit-messages", "recent commit subjects are descriptive")
+def _():
+    bad = lazy_subjects([s for s in learner_commits(PROJECT) if not s.startswith("Merge")])
+    if bad:
+        return ("weak subjects: " + "; ".join(repr(b) for b in bad), f"git log --oneline -- {PROJECT}",
+                "Say what each commit does")
+
+
+# ---------------------------------------------------------------- lesson 09
+
+CAP = "workspace/capstone"
+CAP_RULES = [
+    ("h1-h3", r"^# \S[\s\S]*^## \S[\s\S]*^### \S", "heading hierarchy #, ##, ###"),
+    ("bold", r"\*\*\S[^*]*\S\*\*", "bold"),
+    ("italic", r"(?<!\*)\*[^*\s][^*]*\*(?!\*)", "italic"),
+    ("ordered", r"^\s*\d+\. \S", "an ordered list"),
+    ("unordered", r"^\s*[-*+] (?!\[)\S", "an unordered list"),
+    ("link", r"(?<!!)\[[^\]]+\]\([^)\s]+\)", "a link"),
+    ("code", r"^```[a-z]+\n[\s\S]*?^```", "a fenced code block with a language"),
+    ("table", r"^\|.*\|\s*\n\|?\s*:?-{3,}", "a table"),
+    ("checklist", r"^\s*- \[[ x]\] \S", "a checklist"),
+]
+
+
+@check("09", "09.readme.markdown", "readme-structure", "capstone README uses every required Markdown structure")
+def _():
+    text = read(f"{CAP}/README.md")
+    if text is None:
+        return (f"{CAP}/README.md not found", "ls workspace/capstone", "Create it on your capstone branch")
+    missing = [label for _, pat, label in CAP_RULES if not has(pat, text)]
+    if missing:
+        return ("missing: " + ", ".join(missing), f"cat {CAP}/README.md", "See the Markdown outcomes list in Exercise 9.1")
+
+
+@check("09", "09.readme.links", "relative-links", "capstone README links to another capstone file that exists")
+def _():
+    bad = broken_links(CAP)
+    if bad:
+        return ("broken links: " + "; ".join(bad), f"ls {CAP}", "Fix the relative paths")
+    if not re.search(r"\]\((?!http)[^)]+\.md\)", read(f"{CAP}/README.md") or ""):
+        return ("README does not link to another .md file", f"cat {CAP}/README.md", "Add a second file and link it")
+
+
+@check("09", "09.recovery.documented", "git-restore", "RECOVERY.md describes a recovery and names the command used")
+def _():
+    text = read(f"{CAP}/RECOVERY.md")
+    if text is None:
+        return (f"{CAP}/RECOVERY.md not found", f"ls {CAP}", "Make a mistake, recover, write it up")
+    if not re.search(r"`git (restore|revert|merge --abort|switch)[^`]*`", text):
+        return ("RECOVERY.md does not mention a recovery command in inline code", f"cat {CAP}/RECOVERY.md",
+                "Name the command, e.g. `git restore workspace/capstone/README.md`")
+
+
+@check("09", "09.commits.count", "logical-commits", "at least four commits touch workspace/capstone/")
+def _():
+    n = len(learner_commits(CAP))
+    if n < 4:
+        return (f"only {n} commit(s) touch {CAP}", f"git log --oneline -- {CAP}", "Commit in logical units")
+
+
+@check("09", "09.merge.branch", "git-merge", "capstone work was merged with a merge commit and the branch removed")
+def _():
+    if not merge_touching(CAP):
+        return ("no merge commit touches workspace/capstone", "git log --oneline --graph -12",
+                "Work on a branch, then on main: git merge --no-ff <branch>")
+    unmerged = git("branch", "--no-merged", "main")
+    if unmerged:
+        return ("unmerged branches remain: " + unmerged.replace("\n", ", "), "git branch --no-merged main",
+                "Merge or delete them")
+
+
+@check("09", "09.messages.quality", "commit-messages", "capstone commit subjects are descriptive")
+def _():
+    bad = lazy_subjects([s for s in learner_commits(CAP) if not s.startswith(("Merge", "Revert"))])
+    if bad:
+        return ("weak subjects: " + "; ".join(repr(b) for b in bad), f"git log --oneline -- {CAP}", "Say what each commit does")
+
+
+# ---------------------------------------------------------------- progress
+
+def now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def load_progress():
+    try:
+        with open(PROGRESS, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {"version": 1, "baseline": "", "current_lesson": "00", "lessons": {}}
+
+
+def save_progress(data):
+    os.makedirs(os.path.dirname(PROGRESS), exist_ok=True)
+    with open(PROGRESS, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
+
+
+def lesson_record(data, lesson):
+    return data["lessons"].setdefault(lesson, {
+        "started": now(), "completed": None, "attempts": 0, "passes": 0,
+        "fails": 0, "hints_used": 0, "failed_checks": {}, "last_run": None})
+
+
+def record_run(data, lesson, failures):
+    rec = lesson_record(data, lesson)
+    rec["attempts"] += 1
+    rec["last_run"] = now()
+    if failures:
+        rec["fails"] += 1
+        for f in failures:
+            rec["failed_checks"][f.id] = rec["failed_checks"].get(f.id, 0) + 1
+    else:
+        rec["passes"] += 1
+        rec["completed"] = rec["completed"] or now()
+    data["current_lesson"] = next((l for l in lesson_ids()
+                                   if not data["lessons"].get(l, {}).get("completed")), "09")
+
+
+# ---------------------------------------------------------------- running
+
+def curriculum():
+    with open(CURRICULUM, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def lesson_ids():
+    return [l["id"] for l in curriculum()["lessons"]]
+
+
+def lesson_title(lesson):
+    return next(l["title"] for l in curriculum()["lessons"] if l["id"] == lesson)
+
+
+def warn_protected():
+    changed = git("diff", "--name-only", baseline(), "--", *PROTECTED).splitlines()
+    if changed:
+        print("Note: these course files differ from the original. That is usually an accident:")
+        for c in changed:
+            print(f"      {c}")
+        print("      Look: git diff <file>    Try: git restore <file> if you did not mean to edit it.\n")
+
+
+def run_lesson(lesson, data):
+    """Run one lesson's checks, print educational output, record progress. Returns failures."""
+    checks = [c for c in CHECKS if c.lesson == lesson]
+    print(f"Lesson {lesson} — {lesson_title(lesson)}")
+    failures = []
+    for c in checks:
+        result = c.fn()
+        if result is None:
+            print(f"  ok    {c.id:<26} {c.desc}")
+        else:
+            failures.append(c)
+            problem, look, fix = result
+            print(f"  --    {c.id:<26} {problem}")
+            print(f"        Look: {look}")
+            print(f"        Try:  {fix}")
+    print(f"  {len(checks) - len(failures)} of {len(checks)} checks passed.")
+    record_run(data, lesson, failures)
+    recommend_drills(data, lesson, failures)
+    return failures
+
+
+def recommend_drills(data, lesson, failures):
+    drills = curriculum()["reinforcement"]
+    counts = data["lessons"][lesson]["failed_checks"]
+    suggested = {drills[f.concept] for f in failures if f.concept in drills and counts.get(f.id, 0) >= 3}
+    for d in sorted(suggested):
+        print(f"  This keeps failing. A short drill may help: {d}")
+
+
+def main(argv):
+    if not git("rev-parse", "--show-toplevel"):
+        print("This folder is not a Git repository. Run this from the course folder (see START_HERE.md).")
+        return 2
+    data = load_progress()
+    if not data.get("baseline"):
+        data["baseline"] = git("rev-parse", "HEAD")  # the learner has made no commits yet
+    BASELINE["commit"] = data["baseline"]
+    if argv[:1] == ["hint"] and len(argv) == 2:
+        lesson_record(data, argv[1].zfill(2))["hints_used"] += 1
+        save_progress(data)
+        print(f"Recorded a hint for lesson {argv[1].zfill(2)}.")
+        return 0
+    target = argv[0] if argv else data["current_lesson"]
+    lessons = lesson_ids() if target == "all" else [target.zfill(2)]
+    if any(l not in lesson_ids() for l in lessons):
+        print(f"Unknown lesson {target!r}. Use 00–09, 'all', or nothing for the current lesson.")
+        return 2
+    warn_protected()
+    failed = 0
+    for lesson in lessons:
+        failed += len(run_lesson(lesson, data))
+        print()
+    save_progress(data)
+    if failed == 0:
+        nxt = data["current_lesson"]
+        print(f"All checks passed. Next: lessons/{next(l['dir'] for l in curriculum()['lessons'] if l['id'] == nxt)}/README.md")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

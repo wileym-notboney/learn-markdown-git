@@ -1,0 +1,7 @@
+# Local learning progress. Private to this machine; see README.
+.learning/
+# Editor and OS clutter
+.DS_Store
+.vscode/
+*.tmp
+__pycache__/

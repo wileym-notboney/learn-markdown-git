@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+# ABOUTME: Simulates a learner doing every lesson in a temporary copy and asserts the checker agrees.
+# ABOUTME: Usage: python tools/selftest.py. Exit 0 means every lesson's checks pass when followed, and fail when not.
+"""Prove the checker, do not just describe it.
+
+Copies the course into a temp folder, makes the initial commit, then performs
+each lesson's exercise the way the instructions say. After each lesson it
+asserts that check.py fails before the work is done and passes after.
+"""
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PY = sys.executable
+
+
+class Learner:
+    def __init__(self, root):
+        self.root = root
+
+    def git(self, *args, ok=True):
+        r = subprocess.run(["git", *args], cwd=self.root, capture_output=True, text=True)
+        if ok and r.returncode != 0:
+            raise RuntimeError(f"git {' '.join(args)} failed:\n{r.stderr}")
+        return r
+
+    def write(self, rel, text):
+        path = os.path.join(self.root, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def append(self, rel, text):
+        with open(os.path.join(self.root, rel), "a", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def edit(self, rel, old, new):
+        path = os.path.join(self.root, rel)
+        text = open(path, encoding="utf-8").read()
+        assert old in text, f"{old!r} not in {rel}"
+        self.write(rel, text.replace(old, new))
+
+    def commit(self, msg, *paths):
+        self.git("add", *paths)
+        self.git("commit", "-q", "-m", msg)
+
+    def check(self, lesson, expect):
+        r = subprocess.run([PY, "tools/check.py", lesson], cwd=self.root, capture_output=True, text=True)
+        got = "pass" if r.returncode == 0 else "fail"
+        if got != expect:
+            raise AssertionError(f"lesson {lesson}: expected {expect}, got {got}\n{r.stdout}{r.stderr}")
+        print(f"  lesson {lesson}: {expect} as expected")
+        return r.stdout
+
+
+def setup(tmp):
+    root = os.path.join(tmp, "course")
+    shutil.copytree(SRC, root, ignore=shutil.ignore_patterns(".git", ".learning", "docs", "__pycache__"))
+    l = Learner(root)
+    l.git("init", "-q")
+    l.git("symbolic-ref", "HEAD", "refs/heads/main")
+    l.git("config", "user.name", "Selftest")
+    l.git("config", "user.email", "selftest@example.com")
+    l.git("add", ".")
+    l.git("commit", "-q", "-m", "Initial curriculum")
+    l.append("lessons/00-orientation/README.md", "\n<!-- maintainer edit after release -->\n")
+    l.commit("fix(lesson-00): maintainer edit that must not count as learner work", "lessons/00-orientation/README.md")
+    return l
+
+
+PROFILE = """# Ada
+
+## About
+
+I am **learning** Markdown and *Git* together.
+
+## Tools I use
+
+I write in `vscode` and run `git` in the terminal.
+
+## Things I want to learn
+
+1. Branches
+   - why they exist
+   - how to merge
+2. Tables
+3. Remotes
+
+## A command I know
+
+```bash
+git status
+```
+
+---
+
+## Links
+
+I keep notes in [my notes](https://example.com).
+
+![A placeholder image](https://picsum.photos/200)
+
+> Simplicity is prerequisite for reliability.
+
+This sentence contains a literal asterisk: \\* like that.
+"""
+
+NOTES = """# My notes
+
+Notes I am keeping while learning Markdown and Git.
+
+## Git commands so far
+
+See [Git commands](git-commands.md).
+
+## Lesson progress
+
+- [x] 00 Orientation
+- [x] 01 Markdown basics
+- [ ] 02 Practical Markdown
+- [ ] 03 Git foundations
+
+## Files
+
+- [Git commands](git-commands.md)
+- [My profile](../profile.md)
+"""
+
+GIT_COMMANDS = """# Git commands
+
+| Command      | What it does                      | Changes anything? |
+|--------------|-----------------------------------|-------------------|
+| `git status` | shows what Git thinks is going on | no                |
+| `pwd`        | shows the current folder          | no                |
+| `ls`         | lists files                       | no                |
+
+[Back to notes](README.md)
+"""
+
+
+def protected_files(l):
+    out = l.check("00", "fail")
+    assert "course files differ" not in out, "maintainer commit wrongly flagged as learner edit"
+    l.append("lessons/01-markdown-basics/README.md", "accidental edit\n")
+    out = l.check("00", "fail")
+    assert "course files differ" in out and "01-markdown-basics" in out, "learner edit to a lesson not flagged"
+    l.git("restore", "lessons/01-markdown-basics/README.md")
+    print("  protected-file warning: works")
+
+
+def lesson_00_02(l):
+    l.check("00", "fail")
+    l.write("workspace/hello.md", "# Hello\n\nThis is my first Markdown file.\n")
+    l.check("00", "pass")
+    l.check("01", "fail")
+    l.write("workspace/profile.md", PROFILE)
+    l.check("01", "pass")
+    l.check("02", "fail")
+    l.write("workspace/notes/README.md", NOTES)
+    l.write("workspace/notes/git-commands.md", GIT_COMMANDS)
+    l.check("02", "pass")
+
+
+def lesson_03(l):
+    l.check("03", "fail")
+    l.commit("Add hello file", "workspace/hello.md")
+    l.commit("Add profile page", "workspace/profile.md")
+    l.commit("Add notes index and git command reference", "workspace/notes")
+    l.check("03", "pass")
+
+
+def lesson_04(l):
+    l.append("workspace/profile.md", "4. Merge conflicts\n")
+    l.edit("workspace/notes/README.md", "- [ ] 03 Git foundations", "- [x] 03 Git foundations\n- [ ] 04 Everyday Git")
+    l.commit("Add merge conflicts to learning list", "workspace/profile.md")
+    l.commit("Tick lesson 03 in progress checklist", "workspace/notes/README.md")
+    l.write("workspace/hello.md", "oops\n")
+    l.check("04", "fail")
+    l.git("restore", "workspace/hello.md")
+    l.write("workspace/scratch.md", "scratch\n")
+    l.git("add", "workspace/scratch.md")
+    l.check("04", "fail")
+    l.git("restore", "--staged", "workspace/scratch.md")
+    l.check("04", "pass")
+
+
+def lesson_05(l):
+    l.git("switch", "-q", "-c", "reading-list")
+    l.write("workspace/reading-list.md", "# Reading list\n\n- [Pro Git](https://git-scm.com/book)\n- CommonMark spec\n- A novel\n")
+    l.commit("Add reading list", "workspace/reading-list.md")
+    l.append("workspace/notes/README.md", "- [Reading list](../reading-list.md)\n")
+    l.commit("Link reading list from notes index", "workspace/notes/README.md")
+    l.git("switch", "-q", "main")
+    l.check("05", "fail")
+    l.git("merge", "-q", "reading-list")
+    l.git("branch", "-d", "reading-list")
+    l.check("05", "pass")
+
+
+def lesson_06(l):
+    l.write("workspace/favorites.md", "# Favorites\n\n- Favorite color: green\n- Favorite food: bread\n- Favorite tool: git\n")
+    l.commit("Add favorites", "workspace/favorites.md")
+    r = subprocess.run([PY, "tools/setup_conflict.py"], cwd=l.root, capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    l.edit("workspace/favorites.md", "green", "red")
+    l.commit("Change favorite color to red", "workspace/favorites.md")
+    merge = l.git("merge", "conflict-practice", ok=False)
+    assert merge.returncode != 0 and "CONFLICT" in merge.stdout, "expected a conflict"
+    l.check("06", "fail")
+    l.write("workspace/favorites.md", "# Favorites\n\n- Favorite color: purple\n- Favorite food: bread\n- Favorite tool: git\n")
+    l.commit("Merge conflict-practice, choosing purple", "workspace/favorites.md")
+    l.git("branch", "-d", "conflict-practice")
+    l.check("06", "pass")
+
+
+def lesson_07(l, tmp):
+    remote = os.path.join(tmp, "learn-git-remote.git")
+    clone = os.path.join(tmp, "learn-git-clone")
+    l.git("init", "-q", "--bare", "-b", "main", remote)
+    l.git("remote", "add", "origin", remote)
+    l.check("07", "fail")
+    l.git("push", "-q", "-u", "origin", "main")
+    l.git("clone", "-q", remote, clone)
+    c = Learner(clone)
+    c.git("config", "user.name", "Clone")
+    c.git("config", "user.email", "clone@example.com")
+    c.append("workspace/reading-list.md", "- Added from the clone\n")
+    c.commit("Add a book from the clone", "workspace/reading-list.md")
+    c.git("push", "-q")
+    l.git("fetch", "-q")
+    l.git("pull", "-q")
+    l.check("07", "pass")
+
+
+def lesson_08(l):
+    l.git("switch", "-q", "-c", "docs-improvements")
+    l.write("workspace/project/README.md", "# Pantry\n\nA list of what is in the kitchen.\n\n## Files\n\n- [Install](INSTALL.md)\n- [Changelog](CHANGELOG.md)\n")
+    l.commit("Add pantry project README", "workspace/project/README.md")
+    l.write("workspace/project/INSTALL.md", "# Install\n\n```bash\ncp pantry.md ~/\n```\n")
+    l.commit("Add install instructions", "workspace/project/INSTALL.md")
+    l.write("workspace/project/CHANGELOG.md", "# Changelog\n\n## Today\n\n- Started the pantry docs.\n")
+    l.commit("Add changelog", "workspace/project/CHANGELOG.md")
+    l.append("GLOSSARY.md", "| **fast-forward** | A merge where the branch label simply moves ahead; no merge commit. | 05 |\n")
+    l.commit("Add fast-forward to glossary", "GLOSSARY.md")
+    l.git("switch", "-q", "main")
+    l.check("08", "fail")
+    l.git("merge", "-q", "--no-ff", "--no-edit", "docs-improvements")
+    l.git("branch", "-d", "docs-improvements")
+    l.check("08", "pass")
+
+
+CAPSTONE = """# Trail Log
+
+A **journal** of *hikes*.
+
+## Getting started
+
+1. Clone the repository
+2. Open `log.md`
+
+### Details
+
+- Boots
+- Water
+
+| Trail | Km |
+|-------|----|
+| Ridge | 12 |
+
+```bash
+git log --oneline
+```
+
+- [ ] Add photos
+- [x] Write first entry
+
+See the [log](log.md) and [RECOVERY](RECOVERY.md).
+"""
+
+
+def lesson_09(l):
+    l.git("switch", "-q", "-c", "capstone")
+    l.write("workspace/capstone/README.md", CAPSTONE)
+    l.commit("Add trail log README", "workspace/capstone/README.md")
+    l.write("workspace/capstone/log.md", "# Log\n\n- Ridge trail, sunny.\n")
+    l.commit("Add first log entry", "workspace/capstone/log.md")
+    l.write("workspace/capstone/log.md", "garbage\n")
+    l.git("restore", "workspace/capstone/log.md")
+    l.write("workspace/capstone/RECOVERY.md", "# Recovery\n\nI overwrote log.md. `git diff` showed every line removed, so I ran `git restore workspace/capstone/log.md`.\n")
+    l.commit("Document recovering log.md with git restore", "workspace/capstone/RECOVERY.md")
+    l.append("workspace/capstone/log.md", "- River loop, rain.\n")
+    l.commit("Add second log entry", "workspace/capstone/log.md")
+    l.git("switch", "-q", "main")
+    l.check("09", "fail")
+    l.git("merge", "-q", "--no-ff", "--no-edit", "capstone")
+    l.git("branch", "-d", "capstone")
+    l.check("09", "pass")
+    l.check("all", "pass")
+
+
+def main():
+    with tempfile.TemporaryDirectory() as tmp:
+        print("Simulating a learner in a temporary copy...")
+        l = setup(tmp)
+        protected_files(l)
+        lesson_00_02(l)
+        lesson_03(l)
+        lesson_04(l)
+        lesson_05(l)
+        lesson_06(l)
+        lesson_07(l, tmp)
+        lesson_08(l)
+        lesson_09(l)
+        r = subprocess.run([PY, "tools/review.py"], cwd=l.root, capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout + r.stderr
+        print("  review.py ran on the simulated progress data")
+    print("Selftest passed: every lesson fails before the work and passes after.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
