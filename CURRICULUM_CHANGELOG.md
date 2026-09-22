@@ -16,6 +16,20 @@ Entry template:
 - Re-evaluate: yes/no — when
 ```
 
+## 2026-09-21 — Lesson 07: pre-existing `origin` and bare-repo default branch
+
+- Observed problem: learners who clone the course already have a remote
+  named `origin`; and a bare repo created without `-b main` clones as an
+  empty folder with a confusing warning.
+- Evidence: author walkthrough in a fresh clone; selftest reproduced the
+  empty clone.
+- Hypothesis: both are environment surprises the lesson text did not
+  anticipate.
+- Change made: Before You Start renames a pre-existing `origin`; step 1
+  uses `git init --bare -b main`; Common Mistakes covers the warning.
+- Expected improvement: fewer failed 07.remote.* checks on first attempt.
+- Re-evaluate: yes — once 07 progress data exists.
+
 ## 2026-09-16 — Initial curriculum
 
 - Observed problem: none yet; first release.

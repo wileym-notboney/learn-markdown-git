@@ -572,17 +572,21 @@ def run_lesson(lesson, data):
     """Run one lesson's checks, print educational output, record progress. Returns failures."""
     checks = [c for c in CHECKS if c.lesson == lesson]
     print(f"Lesson {lesson} — {lesson_title(lesson)}")
-    failures = []
+    failures, last_problem = [], None
     for c in checks:
         result = c.fn()
         if result is None:
             print(f"  ok    {c.id:<26} {c.desc}")
-        else:
-            failures.append(c)
-            problem, look, fix = result
-            print(f"  --    {c.id:<26} {problem}")
-            print(f"        Look: {look}")
-            print(f"        Try:  {fix}")
+            continue
+        failures.append(c)
+        problem, look, fix = result
+        if problem == last_problem:
+            print(f"  --    {c.id:<26} (same problem as above)")
+            continue
+        last_problem = problem
+        print(f"  --    {c.id:<26} {problem}")
+        print(f"        Look: {look}")
+        print(f"        Try:  {fix}")
     print(f"  {len(checks) - len(failures)} of {len(checks)} checks passed.")
     record_run(data, lesson, failures)
     recommend_drills(data, lesson, failures)

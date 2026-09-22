@@ -93,6 +93,16 @@ Lesson 06 passed; on `main`; clean working tree. Your terminal is in the
 course folder. Note the *parent* folder's name (`cd ..` then `pwd` shows
 it; `cd` back into the course folder afterwards).
 
+Run `git remote -v`. If it already lists `origin` — it will if you got this
+course by cloning it — rename that one out of the way so the exercise can
+use the conventional name:
+
+```text
+git remote rename origin course-source
+```
+
+This changes a nickname only; nothing is downloaded or deleted.
+
 ### Instructions
 
 1. Create the bare repository in the parent folder. The `..` means "one

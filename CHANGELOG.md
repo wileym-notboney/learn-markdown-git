@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Checker collapses repeated identical failures into one explanation.
+
 - Ten-lesson curriculum teaching Markdown and Git by editing this repository.
 - `tools/check.py`: educational checks with local progress tracking.
 - `tools/validate_curriculum.py`: structural tests and concept-ordering validation.
