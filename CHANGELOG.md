@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `review.py` classifies each finding's likely cause instead of reporting
+  `unclassified`, with `python tools/review.py --selfcheck` asserting the rules.
+- Findings group by concept rather than by individual check.
+
 - Checker collapses repeated identical failures into one explanation.
 
 - Ten-lesson curriculum teaching Markdown and Git by editing this repository.

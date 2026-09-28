@@ -16,6 +16,27 @@ Entry template:
 - Re-evaluate: yes/no — when
 ```
 
+## 2026-09-28 — Review findings now carry a diagnosis
+
+- Observed problem: every finding said "Likely cause: unclassified", so the
+  report named friction but pointed nowhere; step 3 of the loop (classify)
+  was left entirely to a human reading raw signals.
+- Evidence: author run against real progress data — four findings for one
+  lesson, all with the same empty diagnosis, three of them restating the
+  same concept.
+- Hypothesis: each signal can be split by a second piece of evidence
+  already in the data (hints used, where the concept was introduced, how
+  many checks the lesson has), which is enough for a defensible first
+  guess without pretending to certainty.
+- Change made: implemented `classify_cause` with documented rules and an
+  assert-based `--selfcheck`; grouped findings by concept; both wired into
+  `selftest.py`. Rules that cannot find their second piece of evidence
+  still return `unclassified`.
+- Expected improvement: a maintainer opening a review report has a starting
+  hypothesis and a concrete suggested change per finding.
+- Re-evaluate: yes — after the first reports from real learners, check
+  whether the diagnoses matched what the fix turned out to be.
+
 ## 2026-09-21 — Lesson 07: pre-existing `origin` and bare-repo default branch
 
 - Observed problem: learners who clone the course already have a remote

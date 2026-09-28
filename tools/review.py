@@ -19,6 +19,9 @@ import check as checker  # noqa: E402
 
 CONCEPT_OF = {c.id: c.concept for c in checker.CHECKS}
 LESSONS = [l["id"] for l in checker.curriculum()["lessons"]]
+CHECK_COUNT = {l: sum(1 for c in checker.CHECKS if c.lesson == l) for l in LESSONS}
+INTRODUCED_IN = {c: l["id"] for l in checker.curriculum()["lessons"] for c in l["introduces"]}
+BIG_LESSON = 6  # a lesson with this many checks is doing enough to be worth splitting
 
 
 def load(target):
@@ -61,7 +64,7 @@ def _add_lesson(a, r, lid, all_lessons):
     if r.get("completed"):
         a["completed"] += 1
         a["attempts_to_pass"].append(r.get("fails", 0) + 1)
-        elapsed = seconds_between(r.get("started"), r.get("completed"))
+        elapsed = seconds_between(r.get("started"), r.get("completed", a))
         if r.get("fails", 0) == 0 and elapsed is not None and elapsed < 60:
             a["trivial"] += 1
     elif any(l > lid for l in all_lessons):
@@ -73,24 +76,37 @@ def findings_for(lid, a, prev):
     n = max(a["started"], 1)
     mean_attempts = sum(a["attempts_to_pass"]) / len(a["attempts_to_pass"]) if a["attempts_to_pass"] else 0
     if mean_attempts >= 3:
-        out.append(finding(lid, "high", "hard to pass", f"mean {mean_attempts:.1f} check runs before first pass"))
+        out.append(finding(lid, "high", "hard to pass", f"mean {mean_attempts:.1f} check runs before first pass", a))
     if a["abandoned"]:
-        out.append(finding(lid, "high", "abandoned", f"{a['abandoned']} of {a['started']} moved on without passing"))
+        out.append(finding(lid, "high", "abandoned", f"{a['abandoned']} of {a['started']} moved on without passing", a))
     if a["hints"] / n >= 2:
-        out.append(finding(lid, "medium", "hints needed", f"{a['hints']} hints across {a['started']} learner(s)"))
+        out.append(finding(lid, "medium", "hints needed", f"{a['hints']} hints across {a['started']} learner(s)", a))
     if prev is not None and a["fails"] >= 3 and a["fails"] >= 2 * max(prev["fails"], 1):
-        out.append(finding(lid, "medium", "difficulty jump", f"{a['fails']} fails vs {prev['fails']} in the previous lesson"))
+        out.append(finding(lid, "medium", "difficulty jump", f"{a['fails']} fails vs {prev['fails']} in the previous lesson", a))
     if a["trivial"] and a["trivial"] == a["completed"]:
-        out.append(finding(lid, "low", "trivial pass", f"all {a['completed']} completion(s) passed first try in under a minute"))
-    for cid, count in a["failed_checks"].items():
-        if count / n >= 3:
-            out.append(finding(lid, "medium", "concept not landing",
-                               f"{cid} failed {count} time(s); concept '{CONCEPT_OF.get(cid, '?')}'"))
+        out.append(finding(lid, "low", "trivial pass", f"all {a['completed']} completion(s) passed first try in under a minute", a))
+    out += concept_findings(lid, a, n)
     return out
 
 
-def finding(lid, severity, signal, evidence):
-    f = {"lesson": lid, "severity": severity, "signal": signal, "evidence": evidence}
+def concept_findings(lid, a, n):
+    """One finding per struggling concept, not per check: several checks often
+    test the same idea, and three copies of one diagnosis hides the others."""
+    by_concept = {}
+    for cid, count in a["failed_checks"].items():
+        if count / n >= 3:
+            by_concept.setdefault(CONCEPT_OF.get(cid), []).append((cid, count))
+    out = []
+    for concept, checks in by_concept.items():
+        ids = ", ".join(f"{cid} x{count}" for cid, count in sorted(checks))
+        out.append(finding(lid, "medium", "concept not landing",
+                           f"concept '{concept}' — failing checks: {ids}", a, concept=concept))
+    return out
+
+
+def finding(lid, severity, signal, evidence, agg=None, concept=None):
+    f = {"lesson": lid, "severity": severity, "signal": signal, "evidence": evidence,
+         "hints": (agg or {}).get("hints", 0), "concept": concept}
     f["cause"] = classify_cause(f)
     f["suggestion"] = SUGGESTIONS.get(f["cause"], "Review the lesson against the rubric in CURRICULUM_REVIEW.md.")
     return f
@@ -110,15 +126,46 @@ SUGGESTIONS = {
 
 
 def classify_cause(f):
-    """Map a finding (lesson, severity, signal, evidence) to one of the SUGGESTIONS keys.
+    """Map a finding to one of the SUGGESTIONS keys.
 
-    This is the judgement step of the optimisation loop: the same signal can
-    have different causes (a 'hard to pass' lesson may be badly worded, or its
-    check may be too strict). Returning 'unclassified' is always acceptable;
-    a wrong classification is worse than none.
+    The judgement step of the optimisation loop: one signal can have several
+    causes, so each rule leans on a second piece of evidence to tell them
+    apart. Every rule that cannot find that second piece returns
+    "unclassified" — a wrong diagnosis sends a maintainer to rewrite the
+    wrong lesson, which is worse than no diagnosis at all. The final call is
+    always a human's, recorded in CURRICULUM_CHANGELOG.md.
     """
-    # TODO(human): implement the classification heuristics.
+    signal, lesson, hints = f["signal"], f["lesson"], f["hints"]
+    if signal == "trivial pass":
+        return "trivial-pass"
+    if signal == "hints needed":
+        return "unclear-wording"
+    if signal == "concept not landing":
+        return _concept_cause(f["concept"], lesson)
+    if signal == "hard to pass":
+        # Hints mean the learner knew they were stuck and the text did not
+        # rescue them. No hints means they believed they were done, so
+        # suspect the check before the prose.
+        return "unclear-wording" if hints else "check-too-strict"
+    if signal == "difficulty jump":
+        # A lesson doing many things is more likely oversized than misordered.
+        return "lesson-too-big" if CHECK_COUNT.get(lesson, 0) >= BIG_LESSON else "concept-out-of-order"
+    if signal == "abandoned":
+        # Abandoned after asking for help reads as too much lesson at once;
+        # abandoned in silence could be anything, including life.
+        return "lesson-too-big" if hints else "unclassified"
     return "unclassified"
+
+
+def _concept_cause(concept, lesson):
+    """A concept failing in the lesson that teaches it is a teaching problem;
+    failing later means the earlier lesson did not make it stick."""
+    introduced = INTRODUCED_IN.get(concept)
+    if introduced is None:
+        return "unclassified"
+    if introduced == lesson:
+        return "unclear-wording"
+    return "missing-prerequisite"
 
 
 def render(findings, agg, sources):
@@ -140,7 +187,36 @@ def render(findings, agg, sources):
     return "\n".join(lines) + "\n"
 
 
+def selfcheck():
+    """assert-based check of the classification rules; run with --selfcheck."""
+    def f(signal, lesson="03", hints=0, concept=None):
+        return classify_cause({"signal": signal, "lesson": lesson, "hints": hints, "concept": concept})
+
+    assert f("trivial pass") == "trivial-pass"
+    assert f("hints needed") == "unclear-wording"
+    assert f("hard to pass", hints=0) == "check-too-strict"
+    assert f("hard to pass", hints=4) == "unclear-wording"
+    assert f("abandoned", hints=3) == "lesson-too-big"
+    assert f("abandoned", hints=0) == "unclassified"
+    # 'commit' is introduced in lesson 03, so failing there is a teaching problem...
+    assert f("concept not landing", lesson="03", concept="commit") == "unclear-wording"
+    # ...and failing in a later lesson means it never stuck.
+    assert f("concept not landing", lesson="08", concept="commit") == "missing-prerequisite"
+    assert f("concept not landing", concept="not-a-concept") == "unclassified"
+    assert f("difficulty jump", lesson="01") == "lesson-too-big"        # 13 checks
+    assert f("difficulty jump", lesson="00") == "concept-out-of-order"  # 2 checks
+    assert f("something new") == "unclassified"
+    assert set(SUGGESTIONS) >= {f(s, hints=h, concept=c)
+                                for s in ("trivial pass", "hints needed", "hard to pass",
+                                          "abandoned", "difficulty jump", "concept not landing")
+                                for h in (0, 5) for c in (None, "commit")}, "a rule returned an unknown key"
+    print("classify_cause: all rules behave as documented")
+
+
 def main(argv):
+    if argv[:1] == ["--selfcheck"]:
+        selfcheck()
+        return 0
     target = argv[0] if argv else checker.PROGRESS
     records = load(target)
     if not records:

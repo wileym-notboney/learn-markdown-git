@@ -314,9 +314,12 @@ def main():
         lesson_07(l, tmp)
         lesson_08(l)
         lesson_09(l)
+        r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout + r.stderr
         r = subprocess.run([PY, "tools/review.py"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr
-        print("  review.py ran on the simulated progress data")
+        assert "unclassified" not in r.stdout or "Likely cause" in r.stdout
+        print("  review.py and its classification self-check ran on the simulated data")
     print("Selftest passed: every lesson fails before the work and passes after.")
     return 0
 

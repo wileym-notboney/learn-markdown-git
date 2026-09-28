@@ -27,7 +27,15 @@ Run it:
 ```text
 python tools/review.py                       # this repo's .learning/progress.json
 python tools/review.py path/to/dir           # every *.json in a folder (many learners)
+python tools/review.py --selfcheck           # assert the classification rules still hold
 ```
+
+Each finding carries a **likely cause** — the tool's own step-3 guess, made
+by splitting a signal on a second piece of evidence (were hints used? was
+the concept introduced in this lesson or an earlier one? how many checks
+does the lesson have?). A rule that cannot find that second piece returns
+`unclassified` rather than guessing. The diagnosis is a starting hypothesis,
+never the decision: the decision goes in `CURRICULUM_CHANGELOG.md`.
 
 It writes `docs/review-<date>.md` and prints findings with severity.
 
