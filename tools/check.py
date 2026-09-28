@@ -44,28 +44,41 @@ def git(*args):
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-BASELINE = {"commit": ""}
+CURRICULUM_PATHS = ["lessons", "tools", "reinforcement", "examples"]
 
 
-def baseline():
-    """The commit the learner started from: recorded on their first check run, else the root commit."""
-    if not BASELINE["commit"]:
-        lines = git("rev-list", "--max-parents=0", "HEAD").splitlines()
-        BASELINE["commit"] = lines[-1] if lines else ""
-    return BASELINE["commit"]
+def is_maintainer(commit):
+    """True if a commit changes curriculum files. Per CLAUDE.md only maintainers
+    touch those, so this separates course history from the learner's own work
+    without depending on when the learner first ran this checker."""
+    return bool(git("show", "--format=", "--name-only", commit, "--", *CURRICULUM_PATHS))
+
+
+def curriculum_tip():
+    """The newest commit that changed the curriculum: the reference for
+    'has a course file been edited by accident?'."""
+    return git("log", "-1", "--format=%H", "--", *CURRICULUM_PATHS)
 
 
 def learner_commits(*paths, merges=None):
-    """Subjects of commits made after the learner's baseline, newest first."""
+    """Subjects of the learner's own commits touching `paths`, newest first.
+
+    A commit counts as the learner's when it touches these paths and does not
+    touch the curriculum. That is a property of the commit itself, so it holds
+    however the history was built: commits made before the first check run,
+    curriculum updates pulled in later, or a course installed by cloning.
+    """
     flag = {True: ["--merges"], False: ["--no-merges"], None: []}[merges]
-    out = git("log", "--format=%s", *flag, f"{baseline()}..HEAD", "--", *paths)
-    return out.splitlines() if out else []
+    out = git("log", "--format=%H %s", *flag, "--", *paths)
+    return [line.split(" ", 1)[1] for line in out.splitlines()
+            if " " in line and not is_maintainer(line.split(" ", 1)[0])]
 
 
 def merge_touching(path):
     """Merge commits (after the initial commit) whose result changes `path` relative to their first parent."""
-    hashes = git("log", "--format=%H", "--merges", f"{baseline()}..HEAD").splitlines()
-    return [h for h in hashes if git("diff", "--name-only", f"{h}^1", h, "--", path)]
+    hashes = git("log", "--format=%H", "--merges").splitlines()
+    return [h for h in hashes
+            if git("diff", "--name-only", f"{h}^1", h, "--", path) and not is_maintainer(h)]
 
 
 def read(relpath):
@@ -393,10 +406,14 @@ def _():
 
 @check("08", "08.project.links", "relative-links", "links inside workspace/project/ resolve")
 def _():
+    readme = read(f"{PROJECT}/README.md")
+    if readme is None:
+        return (f"{PROJECT}/README.md not found, so its links cannot be checked", "ls workspace/project",
+                "Create the README first")
     bad = broken_links(PROJECT)
     if bad:
         return ("broken links: " + "; ".join(bad), "ls workspace/project", "Relative to the linking file")
-    if not re.search(r"\]\((?!http)[^)]+\.md\)", read(f"{PROJECT}/README.md") or ""):
+    if not re.search(r"\]\((?!http)[^)]+\.md\)", readme):
         return ("README.md does not link to another file", f"cat {PROJECT}/README.md", "Link INSTALL.md and CHANGELOG.md")
 
 
@@ -410,7 +427,7 @@ def _():
 
 @check("08", "08.glossary.term", "logical-commits", "GLOSSARY.md gained a term")
 def _():
-    if not git("diff", "--numstat", baseline(), "HEAD", "--", "GLOSSARY.md"):
+    if not learner_commits("GLOSSARY.md"):
         return ("GLOSSARY.md is unchanged since the course started", "git log --oneline -- GLOSSARY.md",
                 "Add one table row and commit it on the branch")
 
@@ -460,10 +477,14 @@ def _():
 
 @check("09", "09.readme.links", "relative-links", "capstone README links to another capstone file that exists")
 def _():
+    readme = read(f"{CAP}/README.md")
+    if readme is None:
+        return (f"{CAP}/README.md not found, so its links cannot be checked", f"ls {CAP}",
+                "Create the README first")
     bad = broken_links(CAP)
     if bad:
         return ("broken links: " + "; ".join(bad), f"ls {CAP}", "Fix the relative paths")
-    if not re.search(r"\]\((?!http)[^)]+\.md\)", read(f"{CAP}/README.md") or ""):
+    if not re.search(r"\]\((?!http)[^)]+\.md\)", readme):
         return ("README does not link to another .md file", f"cat {CAP}/README.md", "Add a second file and link it")
 
 
@@ -513,7 +534,7 @@ def load_progress():
         with open(PROGRESS, encoding="utf-8") as fh:
             return json.load(fh)
     except (OSError, ValueError):
-        return {"version": 1, "baseline": "", "current_lesson": "00", "lessons": {}}
+        return {"version": 1, "current_lesson": "00", "lessons": {}}
 
 
 def save_progress(data):
@@ -560,7 +581,7 @@ def lesson_title(lesson):
 
 
 def warn_protected():
-    changed = git("diff", "--name-only", baseline(), "--", *PROTECTED).splitlines()
+    changed = git("diff", "--name-only", curriculum_tip(), "--", *PROTECTED).splitlines()
     if changed:
         print("Note: these course files differ from the original. That is usually an accident:")
         for c in changed:
@@ -606,9 +627,6 @@ def main(argv):
         print("This folder is not a Git repository. Run this from the course folder (see START_HERE.md).")
         return 2
     data = load_progress()
-    if not data.get("baseline"):
-        data["baseline"] = git("rev-parse", "HEAD")  # the learner has made no commits yet
-    BASELINE["commit"] = data["baseline"]
     if argv[:1] == ["hint"] and len(argv) == 2:
         lesson_record(data, argv[1].zfill(2))["hints_used"] += 1
         save_progress(data)
@@ -626,9 +644,22 @@ def main(argv):
         print()
     save_progress(data)
     if failed == 0:
-        nxt = data["current_lesson"]
-        print(f"All checks passed. Next: lessons/{next(l['dir'] for l in curriculum()['lessons'] if l['id'] == nxt)}/README.md")
+        print(next_step(data, lessons[-1]))
     return 1 if failed else 0
+
+
+def next_step(data, just_checked):
+    """What to tell a learner who just passed. Points forward from the lesson
+    they actually ran, not back to the earliest one they have never checked."""
+    done = {l for l in lesson_ids() if data["lessons"].get(l, {}).get("completed")}
+    remaining = [l for l in lesson_ids() if l not in done]
+    if not remaining:
+        return "All checks passed — every lesson is complete. Nothing left but to use it."
+    ahead = [l for l in remaining if l > just_checked]
+    nxt = ahead[0] if ahead else remaining[0]
+    folder = next(l["dir"] for l in curriculum()["lessons"] if l["id"] == nxt)
+    revisit = "" if ahead else "  (Lessons you have not checked yet: " + ", ".join(remaining) + ")"
+    return f"All checks passed. Next: lessons/{folder}/README.md{revisit}"
 
 
 if __name__ == "__main__":

@@ -141,6 +141,24 @@ GIT_COMMANDS = """# Git commands
 """
 
 
+def commits_before_first_check(l):
+    """A learner who does a whole lesson and only then runs the checker must
+    still have their commits recognised (found by hand-walking lesson 03)."""
+    l.write("workspace/hello.md", "# Hello\n\nThis is my first Markdown file.\n")
+    l.commit("Add hello file", "workspace/hello.md")
+    out = l.check("03", "fail")
+    assert "03.commit.hello" not in [ln.split()[1] for ln in out.splitlines() if ln.strip().startswith("--")], \
+        "a commit made before the first check run was not counted as the learner's"
+    print("  commits made before the first check run: counted")
+
+
+def next_step_moves_forward(l):
+    """Passing a lesson must point at the next one, not back to lesson 00."""
+    out = l.check("00", "pass")
+    assert "01-markdown-basics" in out, f"next step did not point forward:\n{out}"
+    print("  next-step line: points forward")
+
+
 def protected_files(l):
     out = l.check("00", "fail")
     assert "course files differ" not in out, "maintainer commit wrongly flagged as learner edit"
@@ -152,9 +170,6 @@ def protected_files(l):
 
 
 def lesson_00_02(l):
-    l.check("00", "fail")
-    l.write("workspace/hello.md", "# Hello\n\nThis is my first Markdown file.\n")
-    l.check("00", "pass")
     l.check("01", "fail")
     l.write("workspace/profile.md", PROFILE)
     l.check("01", "pass")
@@ -165,8 +180,7 @@ def lesson_00_02(l):
 
 
 def lesson_03(l):
-    l.check("03", "fail")
-    l.commit("Add hello file", "workspace/hello.md")
+    l.check("03", "fail")  # hello.md is already committed by the earlier regression check
     l.commit("Add profile page", "workspace/profile.md")
     l.commit("Add notes index and git command reference", "workspace/notes")
     l.check("03", "pass")
@@ -236,6 +250,8 @@ def lesson_07(l, tmp):
 
 
 def lesson_08(l):
+    out = l.check("08", "fail")
+    assert "cannot be checked" in out, "missing README was not reported as missing"
     l.git("switch", "-q", "-c", "docs-improvements")
     l.write("workspace/project/README.md", "# Pantry\n\nA list of what is in the kitchen.\n\n## Files\n\n- [Install](INSTALL.md)\n- [Changelog](CHANGELOG.md)\n")
     l.commit("Add pantry project README", "workspace/project/README.md")
@@ -306,6 +322,8 @@ def main():
         print("Simulating a learner in a temporary copy...")
         l = setup(tmp)
         protected_files(l)
+        commits_before_first_check(l)
+        next_step_moves_forward(l)
         lesson_00_02(l)
         lesson_03(l)
         lesson_04(l)
