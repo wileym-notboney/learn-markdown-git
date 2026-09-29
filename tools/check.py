@@ -633,19 +633,44 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+class ProgressError(Exception):
+    """The progress file exists but cannot be trusted."""
+
+
+def valid_progress(data):
+    """True if `data` has the shape check.py and review.py rely on."""
+    return (isinstance(data, dict) and isinstance(data.get("current_lesson"), str)
+            and isinstance(data.get("lessons"), dict)
+            and all(isinstance(r, dict) for r in data["lessons"].values()))
+
+
 def load_progress():
+    """The saved record; a fresh one if there is no file. A file that is
+    there but unreadable raises ProgressError rather than being replaced."""
     try:
         with open(PROGRESS, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
+            data = json.load(fh)
+    except FileNotFoundError:
         return {"version": 1, "current_lesson": "00", "lessons": {}}
+    # Missing means first run. Anything else unreadable stops the run: replacing it with
+    # an empty record would erase the learner's history on the next save. (ref: DL-010)
+    except (OSError, ValueError) as err:
+        raise ProgressError(f"{PROGRESS}: {err}")
+    if not valid_progress(data):
+        raise ProgressError(f"{PROGRESS}: not a progress record")
+    return data
 
 
 def save_progress(data):
+    """Write beside the file, then swap it in, so a crash cannot leave half a file."""
     os.makedirs(os.path.dirname(PROGRESS), exist_ok=True)
-    with open(PROGRESS, "w", encoding="utf-8") as fh:
+    tmp = PROGRESS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
         fh.write("\n")
+    # The temp file shares PROGRESS's directory because os.replace is atomic only within
+    # one filesystem. (ref: DL-010)
+    os.replace(tmp, PROGRESS)
 
 
 def lesson_record(data, lesson):
@@ -730,7 +755,12 @@ def main(argv):
     if not git("rev-parse", "--show-toplevel"):
         print("This folder is not a Git repository. Run this from the course folder (see START_HERE.md).")
         return 2
-    data = load_progress()
+    try:
+        data = load_progress()
+    except ProgressError as err:
+        print(f"Your progress file could not be read: {err}. It has not been changed. "
+              "Move it aside (e.g. rename it to progress.broken.json) to start fresh, or fix the JSON.")
+        return 2
     if argv[:1] == ["hint"] and len(argv) == 2:
         lesson_record(data, argv[1].zfill(2))["hints_used"] += 1
         save_progress(data)

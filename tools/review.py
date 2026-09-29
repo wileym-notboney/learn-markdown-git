@@ -30,9 +30,16 @@ def load(target):
     for p in paths:
         try:
             with open(p, encoding="utf-8") as fh:
-                records.append(json.load(fh))
+                data = json.load(fh)
         except (OSError, ValueError) as err:
             print(f"skipping {p}: {err}")
+            continue
+        # Same shape rule as check.py, so a stray JSON file cannot crash aggregation.
+        # (ref: DL-010)
+        if checker.valid_progress(data):
+            records.append(data)
+        else:
+            print(f"skipping {p}: not a progress record")
     return records
 
 

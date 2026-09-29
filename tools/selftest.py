@@ -352,6 +352,29 @@ def nested_example_fence_ok(tmp):
     print("  nested example fence: profile still passes")
 
 
+# An unreadable progress file is evidence to keep, not state to overwrite. (ref: DL-010)
+def malformed_progress_preserved(tmp):
+    """An unreadable progress file is reported and left alone, not replaced by
+    an empty history; a normal save leaves no temp file behind."""
+    l = fresh_course(tmp, "progress")
+    bad = os.path.join(l.root, ".learning", "progress.json")
+    l.write(".learning/progress.json", "{not json")
+    r = subprocess.run([PY, "tools/check.py", "00"], cwd=l.root, capture_output=True, text=True)
+    assert r.returncode == 2 and "could not be read" in r.stdout, r.stdout + r.stderr
+    assert open(bad).read() == "{not json" and not os.path.exists(bad + ".tmp"), "bad progress file was touched"
+    os.remove(bad)
+    l.check("00", "fail")
+    assert os.path.exists(bad) and not os.path.exists(bad + ".tmp"), "a save left a temp file or no file"
+    folder = os.path.join(tmp, "progress-files")
+    os.makedirs(folder)
+    shutil.copy(bad, os.path.join(folder, "a.json"))
+    with open(os.path.join(folder, "b.json"), "w") as fh:
+        fh.write("[]")
+    r = subprocess.run([PY, "tools/review.py", folder], cwd=l.root, capture_output=True, text=True)
+    assert r.returncode == 0 and "skipping" in r.stdout and "b.json" in r.stdout, r.stdout + r.stderr
+    print("  progress file: malformed one preserved, review skips bad shapes")
+
+
 # The remote must carry the second commit; local edits alone are not a pull. (ref: DL-009)
 def local_edits_not_pull(tmp):
     """Two local reading-list commits are not a pull: the remote must have
@@ -587,7 +610,8 @@ def main():
                            bundled_32_recovery_as_written,
                            fenced_profile_rejected,
                            nested_example_fence_ok,
-                           local_edits_not_pull):
+                           local_edits_not_pull,
+                           malformed_progress_preserved):
             regression(tmp)
         r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr

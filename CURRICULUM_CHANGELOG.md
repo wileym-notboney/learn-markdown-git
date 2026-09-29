@@ -83,6 +83,15 @@ Entry template:
 - Re-evaluate: yes — when lesson 07 progress data exists
 - Decisions: DL-009 in tools/README.md.
 
+## 2026-09-29 — Progress file is validated and written atomically
+- Observed problem: `load_progress` treated malformed JSON like a missing file, so the next save replaced a learner's history with an empty record; the write was not atomic.
+- Evidence: adversarial review finding F9: write invalid JSON to `.learning/progress.json`, run `check.py`, and it is replaced. `python tools/selftest.py` wall time at this commit: 15.8s.
+- Hypothesis: A missing file means "start fresh"; a file that exists but cannot be trusted means "stop and tell the learner", because the file is the only copy of their history.
+- Change made: `ProgressError` and a shared `valid_progress` predicate in `tools/check.py`; `main` prints the path, the reason and how to recover, and returns 2 without writing. `review.load` applies the same predicate. One selftest regression.
+- Expected improvement: a damaged progress file is never silently destroyed; review does not aggregate garbage.
+- Re-evaluate: no
+- Decisions: DL-010 in tools/README.md.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran
