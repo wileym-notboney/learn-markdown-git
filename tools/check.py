@@ -7,6 +7,14 @@ Each check is a small function registered with the lesson it belongs to and
 the concept it tests. A check returns None when satisfied, or a
 (problem, look, try) triple: what is wrong, a command to inspect the state,
 and what to do about it. review.py imports CHECKS to map failures to concepts.
+
+The Markdown checks for lessons 01 and 09 read what a learner would see
+rendered: top-level fenced code blocks (backtick or tilde, closed by the same
+character at least as long; an unclosed fence runs to the end of the file, as
+in CommonMark) and inline code spans are set aside before headings, emphasis,
+links and lists are matched. Indented code blocks are outside the taught
+subset and are not detected. The checker cannot see a rendered preview;
+looking at one stays the learner's job.
 """
 import json
 import os
@@ -60,8 +68,14 @@ def curriculum_tip():
     return git("log", "-1", "--format=%H", "--", *CURRICULUM_PATHS)
 
 
-def learner_commits(*paths, merges=None):
-    """Subjects of the learner's own commits touching `paths`, newest first.
+def is_ancestor(older, newer):
+    return subprocess.run(["git", "merge-base", "--is-ancestor", older, newer],
+                          cwd=ROOT, capture_output=True).returncode == 0
+
+
+def learner_commits(*paths, merges=None, rev="HEAD"):
+    """Subjects of the learner's own commits touching `paths` reachable from
+    `rev`, newest first.
 
     A commit counts as the learner's when it touches these paths and does not
     touch the curriculum. That is a property of the commit itself, so it holds
@@ -69,16 +83,36 @@ def learner_commits(*paths, merges=None):
     curriculum updates pulled in later, or a course installed by cloning.
     """
     flag = {True: ["--merges"], False: ["--no-merges"], None: []}[merges]
-    out = git("log", "--format=%H %s", *flag, "--", *paths)
+    out = git("log", "--format=%H %s", *flag, rev, "--", *paths)
     return [line.split(" ", 1)[1] for line in out.splitlines()
             if " " in line and not is_maintainer(line.split(" ", 1)[0])]
 
 
-def merge_touching(path):
-    """Merge commits (after the initial commit) whose result changes `path` relative to their first parent."""
+def exclusive_commits(path, *others):
+    """Hashes of the learner's commits that touch `path` and none of `others`:
+    one thing per commit, not just a count of commits."""
+    # A count of commits passes one bundled commit plus unrelated or empty ones.
+    # git log -- path already skips commits that do not touch path. (ref: DL-007)
+    hashes = git("log", "--no-merges", "--format=%H", "--", path).splitlines()
+    return [h for h in hashes if not is_maintainer(h)
+            and not git("show", "--format=", "--name-only", h, "--", *others)]
+
+
+def merge_touching(path, both_sides=False):
+    """Learner merge commits that change `path` relative to their first parent.
+    With both_sides, only merges where each parent changed `path` since their
+    merge base: any resolution of a real conflict (ours, theirs, combined)
+    counts, and a merge that only one side touched does not."""
+    def touched(h):
+        if not both_sides:
+            return git("diff", "--name-only", f"{h}^1", h, "--", path)
+        # A conflict exists only when both sides changed `path` since their merge base.
+        # Comparing h^1 with h would reject a resolution that keeps main's line, and
+        # comparing h^1 with h^2 would accept a conflict-free merge. (ref: DL-005)
+        base = git("merge-base", f"{h}^1", f"{h}^2")
+        return base and all(git("diff", "--name-only", base, f"{h}^{n}", "--", path) for n in (1, 2))
     hashes = git("log", "--format=%H", "--merges").splitlines()
-    return [h for h in hashes
-            if git("diff", "--name-only", f"{h}^1", h, "--", path) and not is_maintainer(h)]
+    return [h for h in hashes if touched(h) and not is_maintainer(h)]
 
 
 def read(relpath):
@@ -91,6 +125,45 @@ def read(relpath):
 
 def has(pattern, text):
     return re.search(pattern, text, re.MULTILINE) is not None
+
+
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def split_fences(text):
+    """Split Markdown into (prose, blocks). blocks is a list of (info, body)
+    for the top-level fenced code blocks; prose is the text with every fence
+    and its contents blanked, so line structure is unchanged."""
+    prose, blocks, fence = [], [], None  # fence: (marker, info, body lines)
+    for line in text.split("\n"):
+        if fence is None:
+            m = FENCE.match(line)
+            if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+                fence = (m.group(1), m.group(2).strip(), [])
+                line = ""
+        else:
+            marker, info, body = fence
+            s = line.strip()
+            if len(line) - len(line.lstrip(" ")) <= 3 and len(s) >= len(marker) and set(s) == {marker[0]}:
+                blocks.append((info, "\n".join(body)))
+                fence = None
+            else:
+                body.append(line)
+            line = ""
+        prose.append(line)
+    if fence:
+        blocks.append((fence[1], "\n".join(fence[2])))
+    return "\n".join(prose), blocks
+
+
+def strip_inline_code(prose):
+    """Blank out backtick code spans so `**x**` is not read as bold."""
+    return re.sub(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", lambda m: " " * len(m.group()), prose)
+
+
+def has_prose(pattern, text):
+    """`pattern` matches Markdown outside fenced blocks and inline code."""
+    return has(pattern, strip_inline_code(split_fences(text)[0]))
 
 
 def broken_links(folder):
@@ -155,13 +228,22 @@ def _():
 PROFILE = "workspace/profile.md"
 
 
-def profile_check(cid, concept, desc, pattern, problem, tip):
+def profile_check(cid, concept, desc, pattern, problem, tip, target="prose"):
+    """target: 'prose' (outside fences and inline code), 'inline' (outside
+    fences, inline code kept) or 'blocks' (a fenced block exists; no pattern)."""
     @check("01", cid, concept, desc)
     def _():
         text = read(PROFILE)
         if text is None:
             return (f"{PROFILE} was not found", "ls workspace", "Create it (Exercise 1.1)")
-        if not has(pattern, text):
+        prose, blocks = split_fences(text)
+        if target == "blocks":
+            found = bool(blocks)
+        elif target == "inline":
+            found = has(pattern, prose)
+        else:
+            found = has_prose(pattern, text)
+        if not found:
             return (problem, f"cat {PROFILE}", tip)
 
 
@@ -174,13 +256,13 @@ profile_check("01.profile.bold", "emphasis", "has bold text", r"\*\*\S[^*]*\S\*\
 profile_check("01.profile.italic", "emphasis", "has italic text", r"(?<!\*)\*[^*\s][^*]*\*(?!\*)|(?<!_)_[^_\s][^_]*_(?!_)",
               "no *italic* text", "Wrap a word in single stars: *word*")
 profile_check("01.profile.inline-code", "inline-code", "has inline code", r"`[^`\n]+`",
-              "no `inline code`", "Wrap a command or program name in backticks")
+              "no `inline code`", "Wrap a command or program name in backticks", target="inline")
 profile_check("01.profile.list", "lists", "has a list", r"^\s*([-*+]|\d+\.) \S",
               "no list found", "Lines starting with '- ' or '1. '")
 profile_check("01.profile.nested", "lists", "has a nested list item", r"^\s*([-*+]|\d+\.) \S.*\n(\s*([-*+]|\d+\.) .*\n)*?\s{2,}([-*+]|\d+\.) \S",
               "no indented list item under another item", "Indent a '- ' line by two or more spaces below a list item")
-profile_check("01.profile.code-block", "code-blocks", "has a fenced code block", r"^```[\s\S]*?^```",
-              "no fenced code block (three backticks, content, three backticks)", "See Exercise 1.2")
+profile_check("01.profile.code-block", "code-blocks", "has a fenced code block", None,
+              "no fenced code block (three backticks, content, three backticks)", "See Exercise 1.2", target="blocks")
 profile_check("01.profile.link", "links", "has a link", r"(?<!!)\[[^\]]+\]\([^)\s]+\)",
               "no [text](url) link", "Add a link in the Links section (Exercise 1.3)")
 profile_check("01.profile.image", "images", "has an image with alt text", r"!\[[^\]]+\]\([^)\s]+\)",
@@ -262,10 +344,11 @@ commit_touching("03", "03.commit.notes", "workspace/notes/", "the workspace/note
 
 @check("03", "03.commit.separate", "commit", "hello, profile, and notes were committed separately")
 def _():
-    subjects = learner_commits()
-    if len(subjects) < 3:
-        return (f"only {len(subjects)} commit(s) of yours so far; expected at least three",
-                "git log --oneline", "One commit per file/folder (Exercise 3.2)")
+    paths = ["workspace/hello.md", PROFILE, "workspace/notes"]
+    for path in paths:
+        if not exclusive_commits(path, *[p for p in paths if p != path]):
+            return (f"no commit of yours touches only {path}", "git log --oneline --stat",
+                    "One commit per file/folder (Exercise 3.2); if they were bundled, see Recovery in Exercise 3.2")
 
 
 @check("03", "03.clean", "working-tree", "working tree is clean (everything committed)")
@@ -290,10 +373,12 @@ def _():
 
 @check("04", "04.commits.two-more", "selective-staging", "two more commits exist after Lesson 03 (profile edit, notes edit)")
 def _():
-    if len(learner_commits(PROFILE)) < 2 or len(learner_commits(NOTES)) < 2:
-        return ("profile.md and notes/README.md should each have at least two commits by now",
-                f"git log --oneline -- {PROFILE}; git log --oneline -- {NOTES}",
-                "Exercise 4.1: edit both, then commit each separately")
+    for path, other in ((PROFILE, NOTES), (NOTES, PROFILE)):
+        n = len(exclusive_commits(path, other))
+        if n < 2:
+            return (f"{path} has {n} commit(s) of its own (touching it and not {other}); expected at least two",
+                    f"git log --oneline --stat -- {path}",
+                    "Exercise 4.1: edit both, then commit each separately (see Recovery in 4.1 if they were bundled)")
 
 
 @check("04", "04.restore.hello", "git-restore", "workspace/hello.md matches its committed version")
@@ -307,9 +392,12 @@ def _():
 def _():
     if read("workspace/scratch.md") is None:
         return ("workspace/scratch.md not found", "ls workspace", "Create it (Exercise 4.3)")
+    # Recovery from a committed scratch file is git rm --cached: it untracks the file
+    # and keeps it on disk, so this state stays reachable without loosening the rule.
+    # (ref: DL-006)
     if tracked("workspace/scratch.md") or staged("workspace/scratch.md"):
         return ("scratch.md is staged or committed; it should be untracked", "git status",
-                "git restore --staged workspace/scratch.md (if staged). If committed, see Common Mistakes 4.3")
+                "If staged: git restore --staged workspace/scratch.md. If committed: git rm --cached workspace/scratch.md, then commit (Common Mistakes 4.3)")
 
 
 # ---------------------------------------------------------------- lesson 05
@@ -344,7 +432,7 @@ FAVES = "workspace/favorites.md"
 
 @check("06", "06.merge.commit", "merge-conflicts", "a merge commit touches favorites.md")
 def _():
-    if not merge_touching(FAVES):
+    if not merge_touching(FAVES, both_sides=True):
         return ("no merge commit involving favorites.md", "git log --oneline --graph -6",
                 "Complete the merge: resolve, git add, git commit (Exercise 6.1)")
 
@@ -373,21 +461,35 @@ def _():
                 "git remote add origin ../learn-git-remote.git (Exercise 7.1)")
 
 
+NOT_PUSHED = ("origin/main does not exist; nothing has been pushed", "git log --oneline --all -3",
+              "git push -u origin main")
+
+
 @check("07", "07.remote.pushed", "push", "main has been pushed and has not diverged from origin/main")
 def _():
     if not git("rev-parse", "--verify", "origin/main"):
-        return ("origin/main does not exist; nothing has been pushed", "git log --oneline --all -3",
-                "git push -u origin main")
-    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", "origin/main", "main"], cwd=ROOT)
-    if ancestor.returncode != 0:
-        return ("origin/main has commits that main does not", "git status", "git pull, resolve if needed, then git push")
+        return NOT_PUSHED
+    if is_ancestor("main", "origin/main") and git("rev-parse", "main") != git("rev-parse", "origin/main"):
+        return ("main is behind origin/main", "git status", "git pull")
+    if not is_ancestor("origin/main", "main"):
+        return ("main and origin/main have diverged", "git log --oneline --graph --all -6",
+                "git pull, resolve if needed, then git push")
 
 
-@check("07", "07.remote.pulled", "pull", "reading-list.md was changed by a commit made in the clone")
+@check("07", "07.remote.pulled", "pull", "origin/main carries a second reading-list commit and main contains it")
 def _():
-    if len(learner_commits("workspace/reading-list.md")) < 2:
-        return ("reading-list.md has only its original commit", "git log --oneline -- workspace/reading-list.md",
-                "Commit a change in ../learn-git-clone, push there, then git pull here")
+    if not git("rev-parse", "--verify", "origin/main"):
+        return NOT_PUSHED
+    if not is_ancestor("origin/main", "main"):
+        return ("main does not contain everything on origin/main", "git status", "git pull")
+    # Stateless on purpose: requiring main == origin/main would fail once lessons 08-09
+    # advance main. The second commit must be on origin/main, which rejects unpushed
+    # local edits. Which clone authored it is not provable from history, so lesson 07
+    # labels that step as self-verification. (ref: DL-009)
+    if len(learner_commits("workspace/reading-list.md", rev="origin/main")) < 2:
+        return ("the remote does not have a second reading-list commit yet",
+                "git log --oneline origin/main -- workspace/reading-list.md",
+                "Make it in ../learn-git-clone, push there, then git pull here (Exercise 7.1)")
 
 
 # ---------------------------------------------------------------- lesson 08
@@ -459,7 +561,7 @@ CAP_RULES = [
     ("ordered", r"^\s*\d+\. \S", "an ordered list"),
     ("unordered", r"^\s*[-*+] (?!\[)\S", "an unordered list"),
     ("link", r"(?<!!)\[[^\]]+\]\([^)\s]+\)", "a link"),
-    ("code", r"^```[a-z]+\n[\s\S]*?^```", "a fenced code block with a language"),
+    ("code", None, "a fenced code block with a language"),  # tested on the extracted blocks
     ("table", r"^\|.*\|\s*\n\|?\s*:?-{3,}", "a table"),
     ("checklist", r"^\s*- \[[ x]\] \S", "a checklist"),
 ]
@@ -470,7 +572,9 @@ def _():
     text = read(f"{CAP}/README.md")
     if text is None:
         return (f"{CAP}/README.md not found", "ls workspace/capstone", "Create it on your capstone branch")
-    missing = [label for _, pat, label in CAP_RULES if not has(pat, text)]
+    blocks = split_fences(text)[1]
+    missing = [label for key, pat, label in CAP_RULES
+               if not (any(info for info, _ in blocks) if key == "code" else has_prose(pat, text))]
     if missing:
         return ("missing: " + ", ".join(missing), f"cat {CAP}/README.md", "See the Markdown outcomes list in Exercise 9.1")
 
@@ -529,19 +633,44 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+class ProgressError(Exception):
+    """The progress file exists but cannot be trusted."""
+
+
+def valid_progress(data):
+    """True if `data` has the shape check.py and review.py rely on."""
+    return (isinstance(data, dict) and isinstance(data.get("current_lesson"), str)
+            and isinstance(data.get("lessons"), dict)
+            and all(isinstance(r, dict) for r in data["lessons"].values()))
+
+
 def load_progress():
+    """The saved record; a fresh one if there is no file. A file that is
+    there but unreadable raises ProgressError rather than being replaced."""
     try:
         with open(PROGRESS, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, ValueError):
+            data = json.load(fh)
+    except FileNotFoundError:
         return {"version": 1, "current_lesson": "00", "lessons": {}}
+    # Missing means first run. Anything else unreadable stops the run: replacing it with
+    # an empty record would erase the learner's history on the next save. (ref: DL-010)
+    except (OSError, ValueError) as err:
+        raise ProgressError(f"{PROGRESS}: {err}")
+    if not valid_progress(data):
+        raise ProgressError(f"{PROGRESS}: not a progress record")
+    return data
 
 
 def save_progress(data):
+    """Write beside the file, then swap it in, so a crash cannot leave half a file."""
     os.makedirs(os.path.dirname(PROGRESS), exist_ok=True)
-    with open(PROGRESS, "w", encoding="utf-8") as fh:
+    tmp = PROGRESS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
         fh.write("\n")
+    # The temp file shares PROGRESS's directory because os.replace is atomic only within
+    # one filesystem. (ref: DL-010)
+    os.replace(tmp, PROGRESS)
 
 
 def lesson_record(data, lesson):
@@ -554,13 +683,20 @@ def record_run(data, lesson, failures):
     rec = lesson_record(data, lesson)
     rec["attempts"] += 1
     rec["last_run"] = now()
-    if failures:
+    # The first pass freezes fails_before_pass. Later failures only count as rechecks,
+    # so review.py measures friction of learning the lesson, not later regressions.
+    # (ref: DL-011)
+    if failures and rec["completed"]:
+        rec["rechecks"] = rec.get("rechecks", 0) + 1  # a failure after the first pass is not friction learning it
+    elif failures:
         rec["fails"] += 1
         for f in failures:
             rec["failed_checks"][f.id] = rec["failed_checks"].get(f.id, 0) + 1
     else:
         rec["passes"] += 1
-        rec["completed"] = rec["completed"] or now()
+        if not rec["completed"]:
+            rec["completed"] = now()
+            rec["fails_before_pass"] = rec["fails"]
     data["current_lesson"] = next((l for l in lesson_ids()
                                    if not data["lessons"].get(l, {}).get("completed")), "09")
 
@@ -589,8 +725,9 @@ def warn_protected():
         print("      Look: git diff <file>    Try: git restore <file> if you did not mean to edit it.\n")
 
 
-def run_lesson(lesson, data):
-    """Run one lesson's checks, print educational output, record progress. Returns failures."""
+def run_lesson(lesson, data, record=True):
+    """Run one lesson's checks and print educational output; with record=True
+    also update progress. Returns failures."""
     checks = [c for c in CHECKS if c.lesson == lesson]
     print(f"Lesson {lesson} — {lesson_title(lesson)}")
     failures, last_problem = [], None
@@ -609,8 +746,9 @@ def run_lesson(lesson, data):
         print(f"        Look: {look}")
         print(f"        Try:  {fix}")
     print(f"  {len(checks) - len(failures)} of {len(checks)} checks passed.")
-    record_run(data, lesson, failures)
-    recommend_drills(data, lesson, failures)
+    if record:
+        record_run(data, lesson, failures)
+        recommend_drills(data, lesson, failures)
     return failures
 
 
@@ -626,7 +764,12 @@ def main(argv):
     if not git("rev-parse", "--show-toplevel"):
         print("This folder is not a Git repository. Run this from the course folder (see START_HERE.md).")
         return 2
-    data = load_progress()
+    try:
+        data = load_progress()
+    except ProgressError as err:
+        print(f"Your progress file could not be read: {err}. It has not been changed. "
+              "Move it aside (e.g. rename it to progress.broken.json) to start fresh, or fix the JSON.")
+        return 2
     if argv[:1] == ["hint"] and len(argv) == 2:
         lesson_record(data, argv[1].zfill(2))["hints_used"] += 1
         save_progress(data)
@@ -638,13 +781,15 @@ def main(argv):
         print(f"Unknown lesson {target!r}. Use 00–09, 'all', or nothing for the current lesson.")
         return 2
     warn_protected()
+    record = target != "all"  # 'all' is a read-only overview; only a lesson run is evidence for that lesson
     failed = 0
     for lesson in lessons:
-        failed += len(run_lesson(lesson, data))
+        failed += len(run_lesson(lesson, data, record))
         print()
-    save_progress(data)
+    if record:
+        save_progress(data)
     if failed == 0:
-        print(next_step(data, lessons[-1]))
+        print(next_step(data, lessons[-1]) if record else "All checks passed for every lesson. Nothing was recorded.")
     return 1 if failed else 0
 
 

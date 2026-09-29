@@ -168,7 +168,9 @@ The `04.messages.*` checks read your last several commit subjects.
 ### Recovery
 
 Staged the wrong file? `git restore --staged <file>`. Committed both
-together? Fine; do the next exercise's commits separately instead.
+together? Make one more small edit to each file and commit each on its own
+(two commits), so each file still ends up with commits of its own when you
+run the check.
 
 ### Reflection
 
@@ -319,10 +321,11 @@ python tools/check.py 04
 
 - Running `git restore workspace/scratch.md` (no `--staged`) on an
   untracked file: Git says it has no version to restore from. Harmless.
-- Committing it by reflex. If you did, `git log --oneline -1` will show it;
-  that is acceptable, but then delete the file and commit the deletion so the
-  check can see the intended end state is "untracked" — or simply create a
-  different scratch file.
+- Committing it by reflex. If you did, `git log --oneline -1` will show it.
+  Run `git rm --cached workspace/scratch.md`: that removes the file from
+  Git's tracking but leaves it on disk. Then commit with
+  `git commit -m "Stop tracking scratch file"`. `git status` now lists it
+  under *Untracked files*.
 
 ### Recovery
 

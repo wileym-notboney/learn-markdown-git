@@ -1,0 +1,1330 @@
+{
+  "plan_id": "d187567b-d03a-456b-8aa2-3d4e5b8a8c05",
+  "created_at": "2026-09-29T14:34:48.649760",
+  "frozen_at": null,
+  "overview": {
+    "problem": "check.py reports green for work the lessons promise but the learner did not do (F3 inverse, F5, F6, F7), the conflict helper can commit unrelated learner work and report false success (F1, F2), lesson 04 recovery text cannot reach the checked state (F8), progress.json is silently replaced when malformed (F9), and review.py derives trivial/abandoned/first-pass findings from data that cannot support them (F4). Both gates pass at c9c0161 because selftest only walks the happy path and treats any nonzero checker exit as an expected fail.",
+    "approach": "Nine sequential milestones, one finding-concern each and one commit each. M-001 hardens the selftest harness so every later regression fails on a crash rather than masquerading as an expected fail. Each later milestone adds one targeted selftest regression in its own temporary course, then the smallest code or lesson-text change that makes it pass, then entries in CHANGELOG.md and CURRICULUM_CHANGELOG.md. Checks are tightened where Git history carries evidence (separate commits, fences, remote contents, merge parents) and relabelled as learner self-verification where it cannot (clone provenance). No schema version, no caching, no new dependencies."
+  },
+  "planning_context": {
+    "decisions": [
+      {
+        "id": "DL-001",
+        "version": 1,
+        "decision": "Nine sequential milestones; one finding-concern per milestone and per commit; files may repeat across milestones",
+        "reasoning": "CLAUDE.md requires one lesson concern per commit and gates before every commit -> check.py hosts six of the nine findings -> a file-disjoint split would bundle unrelated fixes into one unreviewable commit -> sequential milestones sharing check.py/selftest.py/changelogs with one gate run each"
+      },
+      {
+        "id": "DL-002",
+        "version": 1,
+        "decision": "Regression vehicle is selftest.py: one named function per finding that builds its own temporary course and asserts the specific check id outcome",
+        "reasoning": "stdlib-only rule excludes pytest -> the shared happy-path Learner accumulates state so a negative case mid-walk would corrupt later lessons -> each regression gets a fresh setup(tmp) fixture and asserts on the check id line in stdout, not only the exit code"
+      },
+      {
+        "id": "DL-003",
+        "version": 1,
+        "decision": "Learner.check treats exit 1 as exercise failure and any other nonzero exit as a harness error",
+        "reasoning": "check.py returns 2 for usage/operational errors and a traceback exits 1 only via uncaught exception text on stderr -> a crash currently reads as an expected fail -> regressions asserting fail would pass on a crash -> require returncode in (0,1) and empty stderr traceback before comparing"
+      },
+      {
+        "id": "DL-004",
+        "version": 1,
+        "decision": "setup_conflict.py refuses unless the index and all tracked files are clean (untracked files allowed); every git call is checked and the first failure stops with stderr and an inspect/recover hint; success is printed only after verifying branch tip content and that HEAD is back on main",
+        "reasoning": "plain git commit takes the whole index (F1) -> path-scoped preflight is insufficient -> a whole-tree porcelain check excluding ?? lines is the smallest correct gate; ignored return codes produced false success (F2) -> fail-fast with no rollback keeps learner work untouched as the review requires"
+      },
+      {
+        "id": "DL-005",
+        "version": 2,
+        "decision": "merge_touching(path, both_sides=True) selects learner merge commits where the path differs from the merge base on both parents; Lesson 09 keeps the first-parent test",
+        "reasoning": "a conflict exists only when both sides changed the path -> keeping main side leaves h^1 == h on that path so the first-parent test rejects a valid resolution (F3) -> comparing h^1 with h^2 is non-empty when only one side changed the path, so a conflict-free --no-ff merge would pass 06.merge.commit -> requiring base..h^1 and base..h^2 both non-empty holds for ours, theirs and combined and rejects one-sided merges -> the capstone merge changes CAP on the branch side only, so 09.merge.branch keeps the first-parent test via the default both_sides=False"
+      },
+      {
+        "id": "DL-006",
+        "version": 1,
+        "decision": "Lesson 04 scratch recovery teaches git rm --cached workspace/scratch.md then a commit; the checker rule is unchanged",
+        "reasoning": "delete-and-commit leaves the file missing so 04.scratch.untracked can never pass (F8) -> rm --cached removes it from tracking while keeping the file on disk -> the literal steps reach exists+untracked+unstaged without destroying learner content and without loosening the check"
+      },
+      {
+        "id": "DL-007",
+        "version": 2,
+        "decision": "Separate-commit checks count learner commits that touch the target path and none of the sibling exercise paths; lesson 04 Exercise 4.1 Recovery is reworded so a bundled commit can still reach the checked state",
+        "reasoning": "total-count check passes one bundled commit plus unrelated commits (F6) -> per-path exclusive commits encode one thing per commit directly -> git log -- path already drops empty commits and unrelated paths -> Lesson 03 needs one exclusive commit each for hello/profile/notes; Lesson 04 needs two exclusive commits each for profile.md and notes/README.md relative to each other -> current 4.1 Recovery (Committed both together? do the next exercise commits separately) leaves only one exclusive commit per file (lesson 04 has only Exercises 4.1-4.3, none adding more), so 04.commits.two-more could never pass; likewise 3.2 Recovery (committed both together is acceptable, move on) leaves 03.commit.separate unpassable -> both Recovery texts must tell the learner to make one further small edit to each file and commit each on its own"
+      },
+      {
+        "id": "DL-008",
+        "version": 2,
+        "decision": "Markdown structural checks run over prose with top-level fenced blocks removed and inline code spans blanked; code-block checks run over the extracted top-level fences; backtick and tilde fences and unclosed fences follow CommonMark; indented (4-space) code blocks are outside the taught subset and not treated as code",
+        "reasoning": "regexes over raw text count a fenced example as rendered structure (F7) -> a line scanner that tracks fence char (backtick or tilde) and length (CommonMark closing rule: same char and >= opening length) handles nested four-backtick examples in ~20 stdlib lines -> CommonMark runs an unclosed fence to end of document, so the scanner treats everything after an unclosed opener as code (no false green from a forgotten closer) -> lessons teach only fenced code blocks, and indented-block detection needs list/paragraph context the scanner does not model, so indented blocks are explicitly excluded (their text counts as prose; accepted false-red risk, consistent with false red over false green) -> no parser dependency needed -> inline code blanked so backticked **x** is not bold"
+      },
+      {
+        "id": "DL-009",
+        "version": 1,
+        "decision": "Lesson 07 checks are stateless: pushed = origin/main exists and is an ancestor of main with distinct ahead/behind/diverged messages; pulled = origin/main carries at least two learner commits touching reading-list.md and main contains origin/main",
+        "reasoning": "requiring main == origin/main would fail after Lessons 08-09 advance main and would need progress coupling -> requiring the second reading-list commit to be on origin/main rejects unpushed local edits (F5 repro) while surviving later lessons -> which clone authored a commit is unprovable from history -> lesson text labels provenance as learner self-verification"
+      },
+      {
+        "id": "DL-010",
+        "version": 1,
+        "decision": "load_progress distinguishes missing (default record) from unreadable/malformed/wrong-shape (print path + reason + recovery; main returns 2 without writing); save_progress writes a sibling temp file then os.replace",
+        "reasoning": "malformed JSON is silently replaced by empty history on next save (F9) -> refusing to proceed preserves the file for recovery -> same-directory temp + os.replace is atomic on POSIX and Windows -> review.load applies the same shape validation and skips bad records with a named reason"
+      },
+      {
+        "id": "DL-011",
+        "version": 1,
+        "decision": "Metrics fix without schema version: check.py all is read-only; failing runs after completion increment rechecks only; first completion freezes fails_before_pass; review.py drops trivial and abandoned signals and computes hard-to-pass only from fails_before_pass",
+        "reasoning": "started/completed timestamps cannot measure learning time and record presence cannot prove abandonment (F4) -> deleting the unsupported signals is smaller and more honest than a v2 schema -> additive keys read with .get keep v1 files valid -> records lacking fails_before_pass are excluded from attempts, i.e. unknown rather than guessed"
+      },
+      {
+        "id": "DL-012",
+        "version": 1,
+        "decision": "No selftest runtime threshold is set; each milestone commit records the measured python tools/selftest.py wall time in its CURRICULUM_CHANGELOG.md evidence line, and runtime work is deferred unless a maintainer reports it as a problem",
+        "reasoning": "no user instruction or project doc sets a runtime budget and docs/error-remediation-plan.md defers runtime optimization -> inventing a ~60s threshold would be an unbacked policy default -> fresh fixtures accumulate across M-002..M-009, so a single M-001 measurement is only a baseline -> recording the measured time at every milestone makes growth visible without a threshold"
+      },
+      {
+        "id": "DL-013",
+        "version": 1,
+        "decision": "Planning assumptions are recorded with evidence: A1 selftest fixtures as test vehicle (backed by CLAUDE.md stdlib-only rule, DL-002); A2 lesson 07 stateless rule (DL-009, RA-003); A3 deleting trivial/abandoned instead of schema versioning (DL-011, RA-001, adversarial-review F4); A4 no active learner - verified 2026-09-29 that .learning/ is empty, and M-004, M-005, M-007 each re-verify it as their first step",
+        "reasoning": "CLAUDE.md forbids changing an exercise a learner is actively completing (current_lesson in .learning/progress.json) -> M-004, M-005 and M-007 change lesson 04 and 07 exercises and checks -> the assumption held at planning time (.learning/ empty) but can change before execution -> each of those milestones starts by reading .learning/progress.json and stops (queue the change) if current_lesson is 04 or 07"
+      },
+      {
+        "id": "DL-014",
+        "version": 1,
+        "decision": "CURRICULUM_REVIEW.md is added to the scope of M-009 to remove the timestamp-derived signal rows",
+        "reasoning": "CURRICULUM_REVIEW.md documents the trivial/abandoned signals that DL-011 deletes from review.py -> leaving them would describe metrics the tool no longer produces and steer maintainers to rewrite lessons from non-existent data -> CONTRIBUTING.md requires checks and their docs to change together -> the task_spec scope list omitted this file only because it was not in the adversarial-review entry points, so extending scope by one doc file is the minimal consistent fix"
+      }
+    ],
+    "rejected_alternatives": [
+      {
+        "id": "RA-001",
+        "alternative": "Execute the 30-task docs/error-remediation-plan.md including progress schema v2 and migration",
+        "rejection_reason": "No learner data exists to migrate; additive .get-read keys plus deleting unsupported signals meet F4/F9 acceptance with far less code",
+        "decision_ref": "DL-011"
+      },
+      {
+        "id": "RA-002",
+        "alternative": "Third-party Markdown parser for F7",
+        "rejection_reason": "Violates stdlib-only rule; a fence/inline-span scanner covers the taught subset",
+        "decision_ref": "DL-008"
+      },
+      {
+        "id": "RA-003",
+        "alternative": "Require main == origin/main for lesson 07, remembered via progress once completed",
+        "rejection_reason": "Couples a pure check to progress state and breaks check all after lessons 08-09; the origin/main-carries-second-commit rule rejects the repro statelessly",
+        "decision_ref": "DL-009"
+      },
+      {
+        "id": "RA-004",
+        "alternative": "Prove pull provenance via reflog or commit author",
+        "rejection_reason": "Reflog is local and expirable; learners use one identity in both folders; history cannot prove which clone authored a commit",
+        "decision_ref": "DL-009"
+      },
+      {
+        "id": "RA-005",
+        "alternative": "Loosen 04.scratch.untracked to accept a missing or differently named scratch file",
+        "rejection_reason": "Weakens the unstaging concept check; fixing the lesson text with git rm --cached keeps the rule and preserves file contents",
+        "decision_ref": "DL-006"
+      },
+      {
+        "id": "RA-006",
+        "alternative": "setup_conflict.py rolls back (reset/restore) after a failed step",
+        "rejection_reason": "Destructive recovery on learner state is forbidden by CLAUDE.md; report state and stop instead",
+        "decision_ref": "DL-004"
+      },
+      {
+        "id": "RA-007",
+        "alternative": "Scope setup_conflict commit with git commit -- workspace/favorites.md instead of refusing",
+        "rejection_reason": "Still switches branches with unrelated staged/modified work in the tree, and a partially staged favorites.md would be committed differently than the learner staged; refusing is simpler and never surprises",
+        "decision_ref": "DL-004"
+      }
+    ],
+    "constraints": [
+      "C-001 (technical, doc-derived): Python standard library only",
+      "C-002 (organizational, doc-derived): Never touch learner-owned workspace/, GLOSSARY.md, .learning/ of the real checkout; all mutation happens in selftest temp fixtures",
+      "C-003 (organizational, doc-derived): python tools/validate_curriculum.py and python tools/selftest.py exit 0 before each commit",
+      "C-004 (organizational, doc-derived): Each commit stages CHANGELOG.md and adds a CURRICULUM_CHANGELOG.md entry; commit style type(scope): description; one concern per commit",
+      "C-005 (organizational, doc-derived): No history rewriting; helpers never reset/restore/unstage learner work",
+      "C-006 (organizational, doc-derived): Do not change an exercise that is current_lesson in .learning/progress.json; M-004, M-005, M-007 verify this first (.learning/ verified empty 2026-09-29; DL-013)"
+    ],
+    "risks": [
+      {
+        "id": "R-001",
+        "risk": "git rev-parse ranges in merge_touching error on root/octopus merges",
+        "mitigation": "git() already returns empty on failure, so such commits are simply not counted",
+        "anchor": "tools/check.py:77-81",
+        "decision_ref": "DL-005"
+      },
+      {
+        "id": "R-002",
+        "risk": "Per-regression fresh fixtures lengthen selftest runtime (each setup copies the course and commits)",
+        "mitigation": "No runtime threshold (no user or doc budget; DL-012). Every milestone commit, M-001 through M-009, records measured selftest wall time in its CURRICULUM_CHANGELOG.md evidence line so growth from accumulating fixtures is visible; runtime work is deferred unless a maintainer reports it",
+        "anchor": "tools/selftest.py:setup",
+        "decision_ref": "DL-012"
+      },
+      {
+        "id": "R-003",
+        "risk": "Pre-commit hook fixture is POSIX-specific",
+        "mitigation": "Hook case skips on os.name == nt with a printed note; other F2 steps still covered on POSIX CI-less runs",
+        "anchor": "tools/selftest.py:helper_stops_on_git_failure",
+        "decision_ref": "DL-004"
+      },
+      {
+        "id": "R-004",
+        "risk": "Stripping fences changes 01/09 outcomes for learners whose files relied on raw-text matches",
+        "mitigation": "Only literal examples lose credit; valid taught syntax passes; changelog entry names the behaviour change",
+        "anchor": "tools/check.py:158-193",
+        "decision_ref": "DL-008"
+      },
+      {
+        "id": "R-005",
+        "risk": "Lesson 00 still previews lesson 01 with a recorded check run (prescribed partial checks remain in progress data)",
+        "mitigation": "Out of scope here; rechecks no longer inflate fails after completion and review no longer derives abandonment, so the residual effect is a few pre-pass fails in lesson 01 counts",
+        "anchor": "lessons/00-orientation/README.md:304",
+        "decision_ref": "DL-011"
+      }
+    ]
+  },
+  "invisible_knowledge": {
+    "system": "check.py registers (lesson, id, concept, desc, fn) checks; fn returns None or a (problem, look, try) triple. review.py maps failed check ids to concepts and turns progress.json counters into curriculum findings. selftest.py walks every lesson in a temp copy.",
+    "invariants": [
+      "A green check means the lesson's promised outcome is visible in files or history; anything history cannot prove is labelled learner-verified in the lesson text",
+      "Helpers and checks never reset, restore, unstage or rewrite learner work; on failure they report state and stop",
+      "Every check function is pure over the repository state: no reads of progress.json",
+      "Learner commits are identified by content (touch learner paths, not curriculum paths), never by time",
+      "Progress data that cannot be validated is never overwritten"
+    ],
+    "tradeoffs": [
+      "False red is preferred over false green: learners read green as move on",
+      "Stateless lesson 07 rule accepts a learner who pushes two local commits then pulls nothing; provenance is explicitly learner-verified instead of pretending to prove it",
+      "Markdown scanner supports only the taught subset; full CommonMark and rendered-preview judgement stay manual",
+      "F4 fixed by removing unsupported metrics rather than versioning the schema; old records lacking fails_before_pass count as unknown"
+    ]
+  },
+  "milestones": [
+    {
+      "id": "M-001",
+      "version": 2,
+      "number": 1,
+      "name": "Selftest distinguishes checker failure from checker crash",
+      "files": [
+        "tools/selftest.py",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "Learner.check raises on exit codes other than 0 and 1",
+        "Learner.check raises when stderr contains a Python traceback",
+        "a helper returns the stdout line for one check id so regressions assert on a specific id",
+        "measured selftest wall time is recorded in each milestone CURRICULUM_CHANGELOG.md entry (DL-012)"
+      ],
+      "acceptance_criteria": [
+        "python tools/selftest.py exits 0",
+        "temporarily making check.py raise at import makes selftest fail with a harness error instead of an expected fail"
+      ],
+      "tests": [
+        "selftest.py harness self-assertion"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-001-001",
+          "version": 1,
+          "file": "tools/selftest.py",
+          "function": "Learner.check",
+          "behavior": "Run check.py; if returncode not in (0, 1) or 'Traceback' in stderr raise RuntimeError('checker crashed') with stdout+stderr; else compare pass/fail with expect as before. Add Learner.line(out, cid) returning the stdout line whose second token is cid (ok/-- status) so regressions assert per check id. Add a fresh_course(tmp, name) helper that runs setup() into tmp/name so each regression owns its fixture; setup() takes the target root.",
+          "decision_refs": [
+            "DL-002",
+            "DL-003"
+          ]
+        },
+        {
+          "id": "CI-M-001-002",
+          "version": 2,
+          "file": "CHANGELOG.md",
+          "function": null,
+          "behavior": "Unreleased/Fixed entry: selftest reports a checker crash as a harness error instead of an expected exercise failure. CURRICULUM_CHANGELOG.md gets a matching entry (observed problem, evidence, hypothesis, change, expected improvement, re-evaluate) for every milestone; each milestone adds one entry to both changelogs, and each CURRICULUM_CHANGELOG.md evidence line records the measured wall time of python tools/selftest.py for that commit (no threshold).",
+          "decision_refs": [
+            "DL-001",
+            "DL-012"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-001-001",
+          "version": 4,
+          "intent_ref": "CI-M-001-001",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -49,15 +49,21 @@\n \n     def check(self, lesson, expect):\n         r = subprocess.run([PY, \"tools/check.py\", lesson], cwd=self.root, capture_output=True, text=True)\n+        if r.returncode not in (0, 1) or \"Traceback\" in r.stderr:\n+            raise RuntimeError(f\"checker crashed on lesson {lesson}:\\n{r.stdout}{r.stderr}\")\n         got = \"pass\" if r.returncode == 0 else \"fail\"\n         if got != expect:\n             raise AssertionError(f\"lesson {lesson}: expected {expect}, got {got}\\n{r.stdout}{r.stderr}\")\n         print(f\"  lesson {lesson}: {expect} as expected\")\n         return r.stdout\n \n-\n-def setup(tmp):\n-    root = os.path.join(tmp, \"course\")\n+    @staticmethod\n+    def line(out, cid):\n+        \"\"\"The check.py output line for one check id; its first word is 'ok' or '--'.\"\"\"\n+        return next(ln for ln in out.splitlines() if ln.split()[1:2] == [cid])\n+\n+\n+def setup(root):\n     shutil.copytree(SRC, root, ignore=shutil.ignore_patterns(\".git\", \".learning\", \"docs\", \"__pycache__\"))\n     l = Learner(root)\n     l.git(\"init\", \"-q\")\n@@ -69,6 +75,11 @@\n     l.append(\"lessons/00-orientation/README.md\", \"\\n<!-- maintainer edit after release -->\\n\")\n     l.commit(\"fix(lesson-00): maintainer edit that must not count as learner work\", \"lessons/00-orientation/README.md\")\n     return l\n+\n+\n+def fresh_course(tmp, name):\n+    \"\"\"A new course in tmp/name, so a regression owns its fixture.\"\"\"\n+    return setup(os.path.join(tmp, name))\n \n \n PROFILE = \"\"\"# Ada\n@@ -320,7 +331,7 @@\n def main():\n     with tempfile.TemporaryDirectory() as tmp:\n         print(\"Simulating a learner in a temporary copy...\")\n-        l = setup(tmp)\n+        l = setup(os.path.join(tmp, \"course\"))\n         protected_files(l)\n         commits_before_first_check(l)\n         next_step_moves_forward(l)\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -51,2 +51,5 @@\n         r = subprocess.run([PY, \"tools/check.py\", lesson], cwd=self.root, capture_output=True, text=True)\n+        # check.py exits 1 for an unmet exercise and 2 for an operational error. Any other\n+        # status, or a traceback, is a harness fault: reading a crash as an expected fail\n+        # would let a regression pass on it. (ref: DL-003)\n         if r.returncode not in (0, 1) or \"Traceback\" in r.stderr:\n",
+          "comments": "Apply changes in order within the milestone; diffs were generated from a sequential scratch copy and tools/selftest.py plus validate_curriculum.py passed after each milestone. Wall times recorded in each CURRICULUM_CHANGELOG entry were measured on the scratch copy (6.6s, 7.9s, 10.1s, 10.6s, 13.2s, 14.6s, 14.3s, 15.0s, 15.9s); re-measure at real commit time and correct the number if it differs. "
+        },
+        {
+          "id": "CC-M-001-002",
+          "version": 4,
+          "intent_ref": "CI-M-001-002",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n   checked, and says so when every lesson is complete.\n - Checks that need a missing file now report the missing file instead of\n   describing its contents.\n+- `selftest.py` reports a checker crash as a harness error instead of an\n+  expected exercise failure.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -18,1 +18,1 @@\n - `selftest.py` reports a checker crash as a harness error instead of an\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-001-003",
+          "version": 3,
+          "intent_ref": "CI-M-001-002",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -16,6 +16,14 @@ Entry template:\n - Re-evaluate: yes/no — when\n ```\n \n+## 2026-09-29 — Selftest tells a checker crash from an expected failure\n+- Observed problem: `Learner.check` treated any nonzero exit as \"fail\", so a regression that expects a failing check also passed when `check.py` crashed.\n+- Evidence: adversarial review of 2026-09-28: a `check.py` that raises at import makes every expected-fail assertion pass. `python tools/selftest.py` wall time at this commit: 6.6s.\n+- Hypothesis: Only exit codes 0 and 1 without a traceback on stderr mean pass or fail; everything else is the harness failing.\n+- Change made: `Learner.check` raises on other exit codes or a traceback; added `Learner.line` (output line for one check id) and `fresh_course` (one fixture per regression) for the regressions that follow.\n+- Expected improvement: a broken checker fails selftest loudly instead of looking like an exercise that has not been done yet.\n+- Re-evaluate: no\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -25,1 +25,2 @@\n - Re-evaluate: no\n+- Decisions: DL-002, DL-003 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    },
+    {
+      "id": "M-002",
+      "version": 1,
+      "number": 2,
+      "name": "F1 F2 conflict helper refuses unrelated work and fails fast",
+      "files": [
+        "tools/setup_conflict.py",
+        "tools/selftest.py",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "refuse without mutation when any tracked file is modified or any path is staged",
+        "untracked files do not block",
+        "each git mutation is return-code checked and the first failure exits 1 with git stderr and state/recovery text",
+        "success text prints only after verifying conflict-practice tip has the blue line and HEAD is main"
+      ],
+      "acceptance_criteria": [
+        "staged unrelated file / staged deletion / partially staged edit each leave git status --porcelain and HEAD and branch list byte-identical and exit 1",
+        "a pre-commit hook exiting 1 yields exit 1 and no Created branch text",
+        "happy path lesson 06 walk still passes"
+      ],
+      "tests": [
+        "selftest regressions helper_refuses_staged_work and helper_stops_on_git_failure"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-002-001",
+          "version": 1,
+          "file": "tools/setup_conflict.py",
+          "function": "main / make_branch",
+          "behavior": "main(): after existing preflights, refuse when any line of git status --porcelain does not start with '??' (message: unrelated tracked or staged changes; list them; fix: commit or stash them yourself, then rerun). make_branch(): run each of switch -c, write, add, commit, switch main through a step helper that on nonzero return prints which step failed, git stderr, the branch you are on (git branch --show-current), and 'Nothing was undone; inspect with git status' then returns 1 immediately. After switch back, verify git show conflict-practice:workspace/favorites.md contains 'Favorite color: blue' and branch --show-current == main before printing the success lines. No reset/restore/unstage anywhere. Docstring 'Nothing else is touched' stays true.",
+          "decision_refs": [
+            "DL-004"
+          ]
+        },
+        {
+          "id": "CI-M-002-002",
+          "version": 1,
+          "file": "tools/selftest.py",
+          "function": "helper_refuses_staged_work / helper_stops_on_git_failure",
+          "behavior": "helper_refuses_staged_work: in a fresh course with committed favorites.md, for each of (staged unrelated new file, staged deletion of hello.md, partially staged edit of profile.md) snapshot git status --porcelain, rev-parse HEAD, git branch --list, run setup_conflict.py, assert exit 1 and identical snapshots, then undo only the fixture's own change. helper_stops_on_git_failure: write .git/hooks/pre-commit that exits 1 (chmod +x), run helper, assert exit 1 and 'Created branch' not in stdout. Skip hook case on Windows (os.name == 'nt') with a printed note.",
+          "decision_refs": [
+            "DL-002",
+            "DL-004"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-002-001",
+          "version": 2,
+          "intent_ref": "CI-M-002-001",
+          "file": "tools/setup_conflict.py",
+          "diff": "diff --git a/tools/setup_conflict.py b/tools/setup_conflict.py\n--- a/tools/setup_conflict.py\n+++ b/tools/setup_conflict.py\n@@ -35,6 +35,10 @@ def main():\n         return refuse(\"workspace/favorites.md has uncommitted changes.\", \"Commit it first (step 2), then run this again.\")\n     if git(\"ls-files\", \"--error-unmatch\", \"workspace/favorites.md\").returncode != 0:\n         return refuse(\"workspace/favorites.md is not committed yet.\", \"Create it and commit it (steps 1–2).\")\n+    unrelated = [l for l in git(\"status\", \"--porcelain\").stdout.splitlines() if not l.startswith(\"??\")]\n+    if unrelated:\n+        return refuse(\"other tracked or staged changes would be swept into the new commit:\\n    \" + \"\\n    \".join(unrelated),\n+                      \"Commit or stash them yourself, then run this again.\")\n     with open(FAVES, encoding=\"utf-8\") as fh:\n         lines = fh.read().splitlines(keepends=True)\n     idx = next((i for i, l in enumerate(lines) if \"Favorite color\" in l), None)\n@@ -43,14 +47,40 @@ def main():\n     return make_branch(lines, idx)\n \n \n+def stopped(label, detail):\n+    \"\"\"Report a failed step and where it left the repository. Nothing is undone.\"\"\"\n+    print(f\"Stopped: {label} failed.\\n{detail.strip()}\")\n+    print(f\"You are on branch {git('branch', '--show-current').stdout.strip()}. \"\n+          \"Nothing was undone; inspect with git status.\")\n+    return 1\n+\n+\n+def step(label, *args):\n+    \"\"\"Run one git command; return None on success, else report and return 1.\"\"\"\n+    result = git(*args)\n+    return None if result.returncode == 0 else stopped(label, result.stderr)\n+\n+\n+def write_favorites(lines):\n+    try:\n+        with open(FAVES, \"w\", encoding=\"utf-8\") as fh:\n+            fh.writelines(lines)\n+    except OSError as err:\n+        return stopped(\"writing workspace/favorites.md\", str(err))\n+\n+\n def make_branch(lines, idx):\n-    git(\"switch\", \"-c\", BRANCH)\n     lines[idx] = \"- Favorite color: blue\\n\"\n-    with open(FAVES, \"w\", encoding=\"utf-8\") as fh:\n-        fh.writelines(lines)\n-    git(\"add\", \"workspace/favorites.md\")\n-    git(\"commit\", \"-m\", \"Change favorite color to blue\")\n-    git(\"switch\", \"main\")\n+    failure = (step(\"git switch -c\", \"switch\", \"-c\", BRANCH)\n+               or write_favorites(lines)\n+               or step(\"git add\", \"add\", \"workspace/favorites.md\")\n+               or step(\"git commit\", \"commit\", \"-m\", \"Change favorite color to blue\")\n+               or step(\"git switch main\", \"switch\", \"main\"))\n+    if failure:\n+        return failure\n+    if (\"Favorite color: blue\" not in git(\"show\", f\"{BRANCH}:workspace/favorites.md\").stdout\n+            or git(\"branch\", \"--show-current\").stdout.strip() != \"main\"):\n+        return stopped(\"verifying the result\", f\"{BRANCH} lacks the blue line, or you are not on main.\")\n     print(f\"Created branch {BRANCH} with one commit that sets the favorite color to blue.\")\n     print(\"You are back on main. favorites.md here is unchanged.\")\n     print(\"Next: edit the same 'Favorite color' line on main to a different colour, commit, then git merge conflict-practice.\")\n",
+          "doc_diff": "--- a/tools/setup_conflict.py\n+++ b/tools/setup_conflict.py\n@@ -38,2 +38,5 @@\n         return refuse(\"workspace/favorites.md is not committed yet.\", \"Create it and commit it (steps 1–2).\")\n+    # A plain git commit takes the whole index, so any other staged or modified tracked\n+    # file would be committed as part of this helper's commit. Untracked files are safe.\n+    # (ref: DL-004)\n     unrelated = [l for l in git(\"status\", \"--porcelain\").stdout.splitlines() if not l.startswith(\"??\")]\n@@ -76,2 +76,5 @@\n     lines[idx] = \"- Favorite color: blue\\n\"\n+    # Every git call is checked and the first failure stops the run with the repository\n+    # left as-is: success is printed only after the branch tip is verified. Nothing is\n+    # reset or restored, because learner work may be present. (ref: DL-004)\n     failure = (step(\"git switch -c\", \"switch\", \"-c\", BRANCH)\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-002-002",
+          "version": 4,
+          "intent_ref": "CI-M-002-002",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -150,6 +150,63 @@\n \n [Back to notes](README.md)\n \"\"\"\n+\n+\n+FAVORITES = \"# Favorites\\n\\n- Favorite color: green\\n- Favorite food: bread\\n- Favorite tool: git\\n\"\n+\n+\n+def course_with_favorites(tmp, name):\n+    l = fresh_course(tmp, name)\n+    l.write(\"workspace/favorites.md\", FAVORITES)\n+    l.commit(\"Add favorites\", \"workspace/favorites.md\")\n+    return l\n+\n+\n+def run_helper(l):\n+    return subprocess.run([PY, \"tools/setup_conflict.py\"], cwd=l.root, capture_output=True, text=True)\n+\n+\n+def helper_refuses_staged_work(tmp):\n+    \"\"\"setup_conflict.py commits with a plain git commit, which takes the whole\n+    index; it must refuse rather than sweep in work it did not create.\"\"\"\n+    l = course_with_favorites(tmp, \"helper-staged\")\n+    l.write(\"workspace/hello.md\", \"# Hello\\n\")\n+    l.write(\"workspace/profile.md\", \"# Ada\\n\")\n+    l.commit(\"Add hello and profile\", \"workspace/hello.md\", \"workspace/profile.md\")\n+\n+    def refuses(why):\n+        state = lambda: [l.git(*a).stdout for a in ((\"status\", \"--porcelain\"), (\"rev-parse\", \"HEAD\"), (\"branch\", \"--list\"))]\n+        before = state()\n+        r = run_helper(l)\n+        assert r.returncode == 1 and state() == before, f\"helper did not refuse cleanly with {why}:\\n{r.stdout}{r.stderr}\"\n+\n+    l.write(\"workspace/other.md\", \"unrelated\\n\")\n+    l.git(\"add\", \"workspace/other.md\")\n+    refuses(\"a staged unrelated file\")\n+    l.git(\"rm\", \"-q\", \"--cached\", \"workspace/other.md\")\n+    os.remove(os.path.join(l.root, \"workspace/other.md\"))\n+    l.git(\"rm\", \"-q\", \"workspace/hello.md\")\n+    refuses(\"a staged deletion\")\n+    l.git(\"restore\", \"--staged\", \"--worktree\", \"workspace/hello.md\")\n+    l.append(\"workspace/profile.md\", \"one\\n\")\n+    l.git(\"add\", \"workspace/profile.md\")\n+    l.append(\"workspace/profile.md\", \"two\\n\")\n+    refuses(\"a partially staged edit\")\n+    print(\"  conflict helper: refuses staged and modified work, changing nothing\")\n+\n+\n+def helper_stops_on_git_failure(tmp):\n+    \"\"\"A failing git command must not be reported as success.\"\"\"\n+    if os.name == \"nt\":\n+        print(\"  conflict helper failure test: skipped (needs a POSIX hook)\")\n+        return\n+    l = course_with_favorites(tmp, \"helper-hook\")\n+    hook = os.path.join(l.root, \".git\", \"hooks\", \"pre-commit\")\n+    l.write(\".git/hooks/pre-commit\", \"#!/bin/sh\\nexit 1\\n\")\n+    os.chmod(hook, 0o755)\n+    r = run_helper(l)\n+    assert r.returncode == 1 and \"Created branch\" not in r.stdout, f\"failed commit reported as success:\\n{r.stdout}{r.stderr}\"\n+    print(\"  conflict helper: a failed git command stops it\")\n \n \n def commits_before_first_check(l):\n@@ -228,7 +285,7 @@\n def lesson_06(l):\n     l.write(\"workspace/favorites.md\", \"# Favorites\\n\\n- Favorite color: green\\n- Favorite food: bread\\n- Favorite tool: git\\n\")\n     l.commit(\"Add favorites\", \"workspace/favorites.md\")\n-    r = subprocess.run([PY, \"tools/setup_conflict.py\"], cwd=l.root, capture_output=True, text=True)\n+    r = run_helper(l)\n     assert r.returncode == 0, r.stdout + r.stderr\n     l.edit(\"workspace/favorites.md\", \"green\", \"red\")\n     l.commit(\"Change favorite color to red\", \"workspace/favorites.md\")\n@@ -343,6 +400,9 @@\n         lesson_07(l, tmp)\n         lesson_08(l)\n         lesson_09(l)\n+        for regression in (helper_refuses_staged_work,\n+                           helper_stops_on_git_failure):\n+            regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n         r = subprocess.run([PY, \"tools/review.py\"], cwd=l.root, capture_output=True, text=True)\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -168,2 +168,3 @@\n \n+# Refusal must leave the index, HEAD and branches exactly as found. (ref: DL-004)\n def helper_refuses_staged_work(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-002-003",
+          "version": 4,
+          "intent_ref": "CI-M-002-001",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n   describing its contents.\n - `selftest.py` reports a checker crash as a harness error instead of an\n   expected exercise failure.\n+- `setup_conflict.py` refuses to run while any tracked file is modified or\n+  any change is staged, and stops at the first failing git command instead of\n+  printing success.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -20,1 +20,1 @@\n - `setup_conflict.py` refuses to run while any tracked file is modified or\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-002-004",
+          "version": 4,
+          "intent_ref": "CI-M-002-001",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -24,6 +24,14 @@ Entry template:\n - Expected improvement: a broken checker fails selftest loudly instead of looking like an exercise that has not been done yet.\n - Re-evaluate: no\n \n+## 2026-09-29 — Conflict helper no longer commits unrelated work or reports false success\n+- Observed problem: `tools/setup_conflict.py` ran a plain `git commit`, which commits the whole index, so anything the learner had staged landed on `conflict-practice`; and it ignored git's exit codes, so a failed commit still printed \"Created branch\".\n+- Evidence: adversarial review findings F1 and F2, reproduced by staging an unrelated file and by a pre-commit hook that exits 1. `python tools/selftest.py` wall time at this commit: 7.9s.\n+- Hypothesis: Preflight has to look at the whole working tree, not just favorites.md, and every git call has to be checked; a helper that fails should report where it stopped and leave the repository as it is.\n+- Change made: Whole-tree preflight (untracked files allowed), each git step return-code checked with the first failure reported, success printed only after the branch tip and current branch are verified. No reset or restore anywhere. Two selftest regressions.\n+- Expected improvement: a learner with unrelated staged work is told to commit or stash it instead of losing it into the practice branch; a failed helper never reads as success.\n+- Re-evaluate: no\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -33,1 +33,2 @@\n - Re-evaluate: no\n+- Decisions: DL-004 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    },
+    {
+      "id": "M-003",
+      "version": 1,
+      "number": 3,
+      "name": "F3 lesson 06 accepts ours theirs and combined resolutions",
+      "files": [
+        "tools/check.py",
+        "tools/selftest.py",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "merge_touching compares the two merge parents on the path",
+        "06.merge.commit passes for keep-main keep-branch and third-value resolutions",
+        "09.merge.branch keeps passing for the no-ff capstone merge"
+      ],
+      "acceptance_criteria": [
+        "regression resolves the conflict three ways in three fixtures and 06.merge.commit is ok in each",
+        "a fast-forward-only history still fails 06.merge.commit"
+      ],
+      "tests": [
+        "selftest regression conflict_resolutions_all_pass"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-003-001",
+          "version": 2,
+          "file": "tools/check.py",
+          "function": "merge_touching",
+          "behavior": "Add both_sides=False parameter. Default: learner merge commits whose first-parent diff on path is non-empty (used by 09.merge.branch). both_sides=True: git merge-base h^1 h^2 gives base; require git diff --name-only base h^1 -- path and base h^2 -- path both non-empty. 06.merge.commit calls it with both_sides=True. Docstring: any resolution of a real conflict counts; a merge only one side touched does not.",
+          "decision_refs": [
+            "DL-005"
+          ]
+        },
+        {
+          "id": "CI-M-003-002",
+          "version": 2,
+          "file": "tools/selftest.py",
+          "function": "conflict_resolutions_all_pass",
+          "behavior": "Ff-only history fails 06.merge.commit. For resolution in (red, blue, purple): fresh course, commit favorites, run helper, change to red on main, git merge conflict-practice (expect conflict), write chosen file, commit, delete branch; 06.merge.commit is ok. Also a no-conflict --no-ff merge where only the side branch changed favorites.md (main changed another file) must leave 06.merge.commit failing.",
+          "decision_refs": [
+            "DL-002",
+            "DL-005"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-003-001",
+          "version": 3,
+          "intent_ref": "CI-M-003-001",
+          "file": "tools/check.py",
+          "diff": "--- a/tools/check.py\n+++ b/tools/check.py\n@@ -74,11 +74,18 @@ def learner_commits(*paths, merges=None):\n             if \" \" in line and not is_maintainer(line.split(\" \", 1)[0])]\n \n \n-def merge_touching(path):\n-    \"\"\"Merge commits (after the initial commit) whose result changes `path` relative to their first parent.\"\"\"\n+def merge_touching(path, both_sides=False):\n+    \"\"\"Learner merge commits that change `path` relative to their first parent.\n+    With both_sides, only merges where each parent changed `path` since their\n+    merge base: any resolution of a real conflict (ours, theirs, combined)\n+    counts, and a merge that only one side touched does not.\"\"\"\n+    def touched(h):\n+        if not both_sides:\n+            return git(\"diff\", \"--name-only\", f\"{h}^1\", h, \"--\", path)\n+        base = git(\"merge-base\", f\"{h}^1\", f\"{h}^2\")\n+        return base and all(git(\"diff\", \"--name-only\", base, f\"{h}^{n}\", \"--\", path) for n in (1, 2))\n     hashes = git(\"log\", \"--format=%H\", \"--merges\").splitlines()\n-    return [h for h in hashes\n-            if git(\"diff\", \"--name-only\", f\"{h}^1\", h, \"--\", path) and not is_maintainer(h)]\n+    return [h for h in hashes if touched(h) and not is_maintainer(h)]\n \n \n def read(relpath):\n@@ -344,7 +351,7 @@ FAVES = \"workspace/favorites.md\"\n \n @check(\"06\", \"06.merge.commit\", \"merge-conflicts\", \"a merge commit touches favorites.md\")\n def _():\n-    if not merge_touching(FAVES):\n+    if not merge_touching(FAVES, both_sides=True):\n         return (\"no merge commit involving favorites.md\", \"git log --oneline --graph -6\",\n                 \"Complete the merge: resolve, git add, git commit (Exercise 6.1)\")\n \n",
+          "doc_diff": "--- a/tools/check.py\n+++ b/tools/check.py\n@@ -80,2 +80,5 @@\n             return git(\"diff\", \"--name-only\", f\"{h}^1\", h, \"--\", path)\n+        # A conflict exists only when both sides changed `path` since their merge base.\n+        # Comparing h^1 with h would reject a resolution that keeps main's line, and\n+        # comparing h^1 with h^2 would accept a conflict-free merge. (ref: DL-005)\n         base = git(\"merge-base\", f\"{h}^1\", f\"{h}^2\")\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-003-002",
+          "version": 4,
+          "intent_ref": "CI-M-003-002",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -207,6 +207,41 @@\n     r = run_helper(l)\n     assert r.returncode == 1 and \"Created branch\" not in r.stdout, f\"failed commit reported as success:\\n{r.stdout}{r.stderr}\"\n     print(\"  conflict helper: a failed git command stops it\")\n+\n+\n+def conflict_resolutions_all_pass(tmp):\n+    \"\"\"Keeping main's line, the branch's line, or a third value all resolve the\n+    conflict; the check must accept each, and reject a merge only one side changed.\"\"\"\n+    l = course_with_favorites(tmp, \"resolve-ff\")\n+    l.git(\"switch\", \"-q\", \"-c\", \"side\")\n+    l.edit(\"workspace/favorites.md\", \"green\", \"blue\")\n+    l.commit(\"Change favorite color to blue\", \"workspace/favorites.md\")\n+    l.git(\"switch\", \"-q\", \"main\")\n+    l.git(\"merge\", \"-q\", \"--ff-only\", \"side\")\n+    out = l.check(\"06\", \"fail\")\n+    assert l.line(out, \"06.merge.commit\").split()[0] == \"--\", \"a fast-forward wrongly counted as a conflict merge\"\n+    for colour in (\"red\", \"blue\", \"purple\"):\n+        l = course_with_favorites(tmp, f\"resolve-{colour}\")\n+        assert run_helper(l).returncode == 0\n+        l.edit(\"workspace/favorites.md\", \"green\", \"red\")\n+        l.commit(\"Change favorite color to red\", \"workspace/favorites.md\")\n+        assert l.git(\"merge\", \"conflict-practice\", ok=False).returncode != 0, \"expected a conflict\"\n+        l.write(\"workspace/favorites.md\", FAVORITES.replace(\"green\", colour))\n+        l.commit(f\"Merge conflict-practice, choosing {colour}\", \"workspace/favorites.md\")\n+        l.git(\"branch\", \"-d\", \"conflict-practice\")\n+        out = l.check(\"06\", \"pass\")\n+        assert l.line(out, \"06.merge.commit\").split()[0] == \"ok\", f\"resolution {colour} not accepted\"\n+    l = course_with_favorites(tmp, \"resolve-one-sided\")\n+    l.git(\"switch\", \"-q\", \"-c\", \"side\")\n+    l.edit(\"workspace/favorites.md\", \"green\", \"blue\")\n+    l.commit(\"Change favorite color to blue\", \"workspace/favorites.md\")\n+    l.git(\"switch\", \"-q\", \"main\")\n+    l.write(\"workspace/other.md\", \"# Other\\n\")\n+    l.commit(\"Add other\", \"workspace/other.md\")\n+    l.git(\"merge\", \"-q\", \"--no-ff\", \"--no-edit\", \"side\")\n+    out = l.check(\"06\", \"fail\")\n+    assert l.line(out, \"06.merge.commit\").split()[0] == \"--\", \"a merge that only one side changed favorites.md wrongly counted as a conflict merge\"\n+    print(\"  conflict resolutions: ours, theirs and combined pass; one-sided merges do not\")\n \n \n def commits_before_first_check(l):\n@@ -401,7 +436,8 @@\n         lesson_08(l)\n         lesson_09(l)\n         for regression in (helper_refuses_staged_work,\n-                           helper_stops_on_git_failure):\n+                           helper_stops_on_git_failure,\n+                           conflict_resolutions_all_pass):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -211,2 +211,3 @@\n \n+# Ours, theirs and combined resolutions pass; one-sided merges do not. (ref: DL-005)\n def conflict_resolutions_all_pass(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-003-003",
+          "version": 4,
+          "intent_ref": "CI-M-003-001",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n - `setup_conflict.py` refuses to run while any tracked file is modified or\n   any change is staged, and stops at the first failing git command instead of\n   printing success.\n+- `06.merge.commit` accepts a conflict resolved by keeping either side, or\n+  by combining them, not only the resolutions that change the main line.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -23,1 +23,1 @@\n - `06.merge.commit` accepts a conflict resolved by keeping either side, or\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-003-004",
+          "version": 5,
+          "intent_ref": "CI-M-003-001",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -32,6 +32,14 @@ Entry template:\n - Expected improvement: a learner with unrelated staged work is told to commit or stash it instead of losing it into the practice branch; a failed helper never reads as success.\n - Re-evaluate: no\n \n+## 2026-09-29 — Lesson 06 check accepts every valid conflict resolution\n+- Observed problem: `merge_touching` compared a merge commit with its first parent, so a learner who resolved the conflict by keeping the line already on `main` produced a merge identical to `main` on that path and `06.merge.commit` failed.\n+- Evidence: adversarial review finding F3: resolving with main's colour failed the check while purple passed. `python tools/selftest.py` wall time at this commit: 10.1s.\n+- Hypothesis: A conflict needs both sides to have changed the file since their merge base, so requiring both parents to differ from the base accepts ours, theirs and combined resolutions and rejects a merge only one side touched.\n+- Change made: `merge_touching(path, both_sides=True)` requires the path to differ from the merge base on both parents; 06.merge.commit uses it, the Lesson 09 check keeps the first-parent test. New selftest regression resolves the conflict three ways and requires 06.merge.commit to pass in each; a fast-forward and a no-conflict `--no-ff` merge still fail it.\n+- Expected improvement: a correct resolution is never rejected for the value the learner chose.\n+- Re-evaluate: no\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -41,1 +41,2 @@\n - Re-evaluate: no\n+- Decisions: DL-005 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    },
+    {
+      "id": "M-004",
+      "version": 2,
+      "number": 4,
+      "name": "F8 lesson 04 scratch recovery reaches the checked state",
+      "files": [
+        "lessons/04-everyday-git/README.md",
+        "tools/check.py",
+        "tools/selftest.py",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "first step: read .learning/progress.json; if current_lesson is 04, stop and queue this change (DL-013)",
+        "Common Mistakes 4.3 tells a learner who committed scratch.md to run git rm --cached workspace/scratch.md then commit that removal and explains the file stays on disk",
+        "the different-scratch-file suggestion is removed",
+        "04.scratch.untracked try text points at the same command"
+      ],
+      "acceptance_criteria": [
+        "regression commits scratch.md then follows the lesson steps literally and 04.scratch.untracked is ok with the file contents unchanged",
+        "validate_curriculum.py exits 0"
+      ],
+      "tests": [
+        "selftest regression scratch_recovery_as_written"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-004-001",
+          "version": 1,
+          "file": "lessons/04-everyday-git/README.md",
+          "function": "Exercise 4.3 Common Mistakes",
+          "behavior": "Replace the committing-by-reflex bullet: if you committed it, run git rm --cached workspace/scratch.md (removes it from Git's tracking, leaves the file on disk), then git commit -m \"Stop tracking scratch file\"; git status now lists it under Untracked files. Remove 'or simply create a different scratch file'. Recovery section unchanged.",
+          "decision_refs": [
+            "DL-006"
+          ]
+        },
+        {
+          "id": "CI-M-004-002",
+          "version": 1,
+          "file": "tools/check.py",
+          "function": "04.scratch.untracked",
+          "behavior": "Try text for the tracked case: 'If staged: git restore --staged workspace/scratch.md. If committed: git rm --cached workspace/scratch.md, then commit (Common Mistakes 4.3)'. Rule unchanged.",
+          "decision_refs": [
+            "DL-006"
+          ]
+        },
+        {
+          "id": "CI-M-004-003",
+          "version": 1,
+          "file": "tools/selftest.py",
+          "function": "scratch_recovery_as_written",
+          "behavior": "Fresh course; write scratch.md, git add, commit; run git rm --cached workspace/scratch.md and commit with a descriptive subject; assert 04.scratch.untracked line is ok and file content unchanged.",
+          "decision_refs": [
+            "DL-002",
+            "DL-006"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-004-001",
+          "version": 4,
+          "intent_ref": "CI-M-004-001",
+          "file": "lessons/04-everyday-git/README.md",
+          "diff": "diff --git a/lessons/04-everyday-git/README.md b/lessons/04-everyday-git/README.md\n--- a/lessons/04-everyday-git/README.md\n+++ b/lessons/04-everyday-git/README.md\n@@ -319,10 +319,11 @@ python tools/check.py 04\n \n - Running `git restore workspace/scratch.md` (no `--staged`) on an\n   untracked file: Git says it has no version to restore from. Harmless.\n-- Committing it by reflex. If you did, `git log --oneline -1` will show it;\n-  that is acceptable, but then delete the file and commit the deletion so the\n-  check can see the intended end state is \"untracked\" — or simply create a\n-  different scratch file.\n+- Committing it by reflex. If you did, `git log --oneline -1` will show it.\n+  Run `git rm --cached workspace/scratch.md`: that removes the file from\n+  Git's tracking but leaves it on disk. Then commit with\n+  `git commit -m \"Stop tracking scratch file\"`. `git status` now lists it\n+  under *Untracked files*.\n \n ### Recovery\n \n",
+          "doc_diff": "--- a/lessons/04-everyday-git/README.md\n+++ b/lessons/04-everyday-git/README.md\n@@ -326,1 +326,1 @@\n - Committing it by reflex. If you did, `git log --oneline -1` will show it.\n",
+          "comments": "Apply changes in order within the milestone; diffs were generated from a sequential scratch copy and tools/selftest.py plus validate_curriculum.py passed after each milestone. DL-013 guard: before applying, read .learning/progress.json; if current_lesson is 04, stop and queue this milestone. doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-004-002",
+          "version": 2,
+          "intent_ref": "CI-M-004-002",
+          "file": "tools/check.py",
+          "diff": "diff --git a/tools/check.py b/tools/check.py\n--- a/tools/check.py\n+++ b/tools/check.py\n@@ -310,7 +310,7 @@ def _():\n         return (\"workspace/scratch.md not found\", \"ls workspace\", \"Create it (Exercise 4.3)\")\n     if tracked(\"workspace/scratch.md\") or staged(\"workspace/scratch.md\"):\n         return (\"scratch.md is staged or committed; it should be untracked\", \"git status\",\n-                \"git restore --staged workspace/scratch.md (if staged). If committed, see Common Mistakes 4.3\")\n+                \"If staged: git restore --staged workspace/scratch.md. If committed: git rm --cached workspace/scratch.md, then commit (Common Mistakes 4.3)\")\n \n \n # ---------------------------------------------------------------- lesson 05\n",
+          "doc_diff": "--- a/tools/check.py\n+++ b/tools/check.py\n@@ -309,2 +309,5 @@\n         return (\"workspace/scratch.md not found\", \"ls workspace\", \"Create it (Exercise 4.3)\")\n+    # Recovery from a committed scratch file is git rm --cached: it untracks the file\n+    # and keeps it on disk, so this state stays reachable without loosening the rule.\n+    # (ref: DL-006)\n     if tracked(\"workspace/scratch.md\") or staged(\"workspace/scratch.md\"):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-004-003",
+          "version": 3,
+          "intent_ref": "CI-M-004-003",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -244,6 +244,20 @@\n     print(\"  conflict resolutions: ours, theirs and combined pass; one-sided merges do not\")\n \n \n+def scratch_recovery_as_written(tmp):\n+    \"\"\"Lesson 04 Common Mistakes: a committed scratch file must be recoverable\n+    by the steps the lesson gives, without losing the file.\"\"\"\n+    l = fresh_course(tmp, \"scratch\")\n+    l.write(\"workspace/scratch.md\", \"scratch\\n\")\n+    l.commit(\"Add scratch file\", \"workspace/scratch.md\")\n+    l.git(\"rm\", \"-q\", \"--cached\", \"workspace/scratch.md\")\n+    l.git(\"commit\", \"-q\", \"-m\", \"Stop tracking scratch file\")\n+    out = l.check(\"04\", \"fail\")\n+    assert l.line(out, \"04.scratch.untracked\").split()[0] == \"ok\", \"recovery steps did not reach the checked state\"\n+    assert open(os.path.join(l.root, \"workspace/scratch.md\")).read() == \"scratch\\n\", \"recovery lost the file contents\"\n+    print(\"  scratch recovery: lesson 04 steps reach the checked state\")\n+\n+\n def commits_before_first_check(l):\n     \"\"\"A learner who does a whole lesson and only then runs the checker must\n     still have their commits recognised (found by hand-walking lesson 03).\"\"\"\n@@ -437,7 +451,8 @@\n         lesson_09(l)\n         for regression in (helper_refuses_staged_work,\n                            helper_stops_on_git_failure,\n-                           conflict_resolutions_all_pass):\n+                           conflict_resolutions_all_pass,\n+                           scratch_recovery_as_written):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -246,2 +246,3 @@\n \n+# Follows the lesson text literally, so text and check cannot drift apart. (ref: DL-006)\n def scratch_recovery_as_written(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-004-004",
+          "version": 4,
+          "intent_ref": "CI-M-004-001",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n   printing success.\n - `06.merge.commit` accepts a conflict resolved by keeping either side, or\n   by combining them, not only the resolutions that change the main line.\n+- Lesson 04 Exercise 4.3 recovery for a committed `scratch.md` now ends in\n+  the state `04.scratch.untracked` checks for.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -25,1 +25,1 @@\n - Lesson 04 Exercise 4.3 recovery for a committed `scratch.md` now ends in\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-004-005",
+          "version": 4,
+          "intent_ref": "CI-M-004-001",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -40,6 +40,14 @@ Entry template:\n - Expected improvement: a correct resolution is never rejected for the value the learner chose.\n - Re-evaluate: no\n \n+## 2026-09-29 — Lesson 04.3: recovering a committed scratch file reaches the checked state\n+- Observed problem: Common Mistakes 4.3 told a learner who committed `scratch.md` to delete the file and commit the deletion; that leaves the file missing, and `04.scratch.untracked` requires it to exist and be untracked, so the check could never pass by following the text.\n+- Evidence: adversarial review finding F8: commit scratch.md, delete it and commit the deletion, and 04.scratch.untracked fails with \"workspace/scratch.md not found\". `python tools/selftest.py` wall time at this commit: 10.6s.\n+- Hypothesis: The recovery advice was written against the desired end state (untracked) without walking the steps to see whether they reach it.\n+- Change made: Common Mistakes 4.3 now says `git rm --cached workspace/scratch.md`, then commit; the different-scratch-file suggestion is removed; the check's Try text names the same command. The check rule is unchanged. New selftest regression follows the text literally.\n+- Expected improvement: a learner who committed the file by reflex can get to green without losing it.\n+- Re-evaluate: yes — when lesson 04 progress data exists\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -49,1 +49,2 @@\n - Re-evaluate: yes — when lesson 04 progress data exists\n+- Decisions: DL-006 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    },
+    {
+      "id": "M-005",
+      "version": 3,
+      "number": 5,
+      "name": "F6 separate-commit checks require per-path commits",
+      "files": [
+        "lessons/03-git-foundations/README.md",
+        "lessons/04-everyday-git/README.md",
+        "tools/check.py",
+        "tools/selftest.py",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "first step: read .learning/progress.json; if current_lesson is 03 or 04, stop and queue this change (DL-013)",
+        "03.commit.separate needs for each of hello/profile/notes a learner commit touching it and neither sibling",
+        "04.commits.two-more needs two learner commits touching profile.md without notes/README.md and two touching notes/README.md without profile.md",
+        "messages name which path lacks its own commit",
+        "Exercise 4.1 Recovery tells a learner who bundled profile and notes to make one further edit to each file and commit each separately",
+        "Exercise 3.2 Recovery tells a learner who committed profile and notes together to make one further small edit to each and commit each separately, replacing the 'acceptable... move on' text"
+      ],
+      "acceptance_criteria": [
+        "one bundled 03 commit plus an unrelated favorites commit plus an empty commit fails 03.commit.separate",
+        "one combined 04 edit commit fails 04.commits.two-more",
+        "prescribed walk passes",
+        "bundled 4.1 commit followed by the new 4.1 Recovery steps literally passes 04.commits.two-more (lesson 04 has only Exercises 4.1-4.3; lesson 03's exclusive commits plus the recovery commits supply two per path)",
+        "bundled 3.2 profile+notes commit followed by the new 3.2 Recovery steps literally passes 03.commit.separate"
+      ],
+      "tests": [
+        "selftest regressions bundled_commit_rejected, combined_edit_rejected, bundled_41_recovery_as_written and bundled_32_recovery_as_written"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-005-001",
+          "version": 1,
+          "file": "tools/check.py",
+          "function": "learner_commits / exclusive_commits / 03.commit.separate / 04.commits.two-more",
+          "behavior": "learner_commits gains a sibling exclusive_commits(path, *others) returning learner commit hashes touching path whose git show --name-only lists no file under any of others (reuse one log walk; keep learner_commits' public return of subjects). 03.commit.separate: for each of hello.md, profile.md, notes/ with the other two as others, require >=1; report the first path lacking its own commit. 04.commits.two-more: exclusive_commits(PROFILE, NOTES) >= 2 and exclusive_commits(NOTES, PROFILE) >= 2; report which falls short.",
+          "decision_refs": [
+            "DL-007"
+          ]
+        },
+        {
+          "id": "CI-M-005-002",
+          "version": 1,
+          "file": "tools/selftest.py",
+          "function": "bundled_commit_rejected / combined_edit_rejected",
+          "behavior": "bundled: fresh course, write hello/profile/notes, commit all in one commit, commit favorites.md, git commit --allow-empty; assert 03.commit.separate line is '--'. combined: after a correct lesson 03, edit profile and notes and commit both together; assert 04.commits.two-more is '--'.",
+          "decision_refs": [
+            "DL-002",
+            "DL-007"
+          ]
+        },
+        {
+          "id": "CI-M-005-003",
+          "version": 1,
+          "file": "lessons/04-everyday-git/README.md",
+          "function": "Exercise 4.1 Recovery",
+          "behavior": "Replace \"Committed both together? Fine; do the next exercise's commits separately instead.\" with: Committed both together? Make one more small edit to each file and commit each on its own (two commits), so each file still ends up with commits of its own when you run the check. Staged-the-wrong-file sentence unchanged.",
+          "decision_refs": [
+            "DL-007"
+          ]
+        },
+        {
+          "id": "CI-M-005-004",
+          "version": 2,
+          "file": "tools/selftest.py",
+          "function": "bundled_41_recovery_as_written",
+          "behavior": "Fresh course after a correct lesson 03; do 4.1 as one bundled profile+notes commit; follow the new 4.1 Recovery literally (one extra edit to each file, committed separately); run Exercises 4.2-4.3 as prescribed (they add no profile/notes commits); assert 04.commits.two-more line is ok.",
+          "decision_refs": [
+            "DL-002",
+            "DL-007"
+          ]
+        },
+        {
+          "id": "CI-M-005-005",
+          "version": 1,
+          "file": "lessons/03-git-foundations/README.md",
+          "function": "Exercise 3.2 Recovery (Common Mistakes bullet)",
+          "behavior": "Replace \"If you committed both together, that is acceptable. Note it in your reflection and move on; splitting commits is an advanced topic.\" with: If you committed both together, make one more small edit to profile.md and commit it on its own, then one more small edit inside notes/ and commit that on its own, so each has a commit of its own when you run the check. The staged-both-together bullet above stays unchanged.",
+          "decision_refs": [
+            "DL-007"
+          ]
+        },
+        {
+          "id": "CI-M-005-006",
+          "version": 1,
+          "file": "tools/selftest.py",
+          "function": "bundled_32_recovery_as_written",
+          "behavior": "Fresh course; commit hello.md alone (3.1); commit profile.md and notes/ together in one commit; follow the new 3.2 Recovery literally (one extra edit to profile.md committed alone, one extra edit under notes/ committed alone); assert 03.commit.separate line is ok.",
+          "decision_refs": [
+            "DL-002",
+            "DL-007"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-005-001",
+          "version": 4,
+          "intent_ref": "CI-M-005-001",
+          "file": "tools/check.py",
+          "diff": "diff --git a/tools/check.py b/tools/check.py\n--- a/tools/check.py\n+++ b/tools/check.py\n@@ -74,6 +74,14 @@ def learner_commits(*paths, merges=None):\n             if \" \" in line and not is_maintainer(line.split(\" \", 1)[0])]\n \n \n+def exclusive_commits(path, *others):\n+    \"\"\"Hashes of the learner's commits that touch `path` and none of `others`:\n+    one thing per commit, not just a count of commits.\"\"\"\n+    hashes = git(\"log\", \"--no-merges\", \"--format=%H\", \"--\", path).splitlines()\n+    return [h for h in hashes if not is_maintainer(h)\n+            and not git(\"show\", \"--format=\", \"--name-only\", h, \"--\", *others)]\n+\n+\n def merge_touching(path, both_sides=False):\n     \"\"\"Learner merge commits that change `path` relative to their first parent.\n     With both_sides, only merges where each parent changed `path` since their\n@@ -263,10 +271,11 @@ commit_touching(\"03\", \"03.commit.notes\", \"workspace/notes/\", \"the workspace/note\n \n @check(\"03\", \"03.commit.separate\", \"commit\", \"hello, profile, and notes were committed separately\")\n def _():\n-    subjects = learner_commits()\n-    if len(subjects) < 3:\n-        return (f\"only {len(subjects)} commit(s) of yours so far; expected at least three\",\n-                \"git log --oneline\", \"One commit per file/folder (Exercise 3.2)\")\n+    paths = [\"workspace/hello.md\", PROFILE, \"workspace/notes\"]\n+    for path in paths:\n+        if not exclusive_commits(path, *[p for p in paths if p != path]):\n+            return (f\"no commit of yours touches only {path}\", \"git log --oneline --stat\",\n+                    \"One commit per file/folder (Exercise 3.2); if they were bundled, see Recovery in Exercise 3.2\")\n \n \n @check(\"03\", \"03.clean\", \"working-tree\", \"working tree is clean (everything committed)\")\n@@ -291,10 +300,12 @@ def _():\n \n @check(\"04\", \"04.commits.two-more\", \"selective-staging\", \"two more commits exist after Lesson 03 (profile edit, notes edit)\")\n def _():\n-    if len(learner_commits(PROFILE)) < 2 or len(learner_commits(NOTES)) < 2:\n-        return (\"profile.md and notes/README.md should each have at least two commits by now\",\n-                f\"git log --oneline -- {PROFILE}; git log --oneline -- {NOTES}\",\n-                \"Exercise 4.1: edit both, then commit each separately\")\n+    for path, other in ((PROFILE, NOTES), (NOTES, PROFILE)):\n+        n = len(exclusive_commits(path, other))\n+        if n < 2:\n+            return (f\"{path} has {n} commit(s) of its own (touching it and not {other}); expected at least two\",\n+                    f\"git log --oneline --stat -- {path}\",\n+                    \"Exercise 4.1: edit both, then commit each separately (see Recovery in 4.1 if they were bundled)\")\n \n \n @check(\"04\", \"04.restore.hello\", \"git-restore\", \"workspace/hello.md matches its committed version\")\n",
+          "doc_diff": "--- a/tools/check.py\n+++ b/tools/check.py\n@@ -78,2 +78,4 @@\n     one thing per commit, not just a count of commits.\"\"\"\n+    # A count of commits passes one bundled commit plus unrelated or empty ones.\n+    # git log -- path already skips commits that do not touch path. (ref: DL-007)\n     hashes = git(\"log\", \"--no-merges\", \"--format=%H\", \"--\", path).splitlines()\n",
+          "comments": "Apply changes in order within the milestone; diffs were generated from a sequential scratch copy and tools/selftest.py plus validate_curriculum.py passed after each milestone. DL-013 guard: before applying, read .learning/progress.json; if current_lesson is 03 or 04, stop and queue this milestone. Sub-steps a (check.py, selftest 002), b (lesson 04 README, selftest 004), c (lesson 03 README, selftest 006, changelogs) build on each other. "
+        },
+        {
+          "id": "CC-M-005-002",
+          "version": 3,
+          "intent_ref": "CI-M-005-002",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -244,6 +244,46 @@\n     print(\"  conflict resolutions: ours, theirs and combined pass; one-sided merges do not\")\n \n \n+def course_after_lesson_03(tmp, name):\n+    \"\"\"A course where hello, profile and notes each have a commit of their own.\"\"\"\n+    l = fresh_course(tmp, name)\n+    l.write(\"workspace/hello.md\", \"# Hello\\n\")\n+    l.write(\"workspace/profile.md\", PROFILE)\n+    l.write(\"workspace/notes/README.md\", NOTES)\n+    l.write(\"workspace/notes/git-commands.md\", GIT_COMMANDS)\n+    l.commit(\"Add hello file\", \"workspace/hello.md\")\n+    l.commit(\"Add profile page\", \"workspace/profile.md\")\n+    l.commit(\"Add notes index and git command reference\", \"workspace/notes\")\n+    return l\n+\n+\n+def bundled_commit_rejected(tmp):\n+    \"\"\"One commit holding hello, profile and notes, padded with unrelated and\n+    empty commits, is not three separate commits.\"\"\"\n+    l = fresh_course(tmp, \"bundled\")\n+    l.write(\"workspace/hello.md\", \"# Hello\\n\")\n+    l.write(\"workspace/profile.md\", PROFILE)\n+    l.write(\"workspace/notes/README.md\", NOTES)\n+    l.commit(\"Add hello, profile and notes together\", \"workspace\")\n+    l.write(\"workspace/favorites.md\", FAVORITES)\n+    l.commit(\"Add favorites\", \"workspace/favorites.md\")\n+    l.git(\"commit\", \"-q\", \"--allow-empty\", \"-m\", \"Record an empty commit\")\n+    out = l.check(\"03\", \"fail\")\n+    assert l.line(out, \"03.commit.separate\").split()[0] == \"--\", \"a bundled commit passed 03.commit.separate\"\n+    print(\"  bundled commit: rejected by 03.commit.separate\")\n+\n+\n+def combined_edit_rejected(tmp):\n+    \"\"\"Editing profile and notes in one commit is one commit, not two more each.\"\"\"\n+    l = course_after_lesson_03(tmp, \"combined\")\n+    l.append(\"workspace/profile.md\", \"4. Merge conflicts\\n\")\n+    l.append(\"workspace/notes/README.md\", \"- [ ] 04 Everyday Git\\n\")\n+    l.commit(\"Update profile and notes together\", \"workspace\")\n+    out = l.check(\"04\", \"fail\")\n+    assert l.line(out, \"04.commits.two-more\").split()[0] == \"--\", \"a combined edit passed 04.commits.two-more\"\n+    print(\"  combined edit: rejected by 04.commits.two-more\")\n+\n+\n def scratch_recovery_as_written(tmp):\n     \"\"\"Lesson 04 Common Mistakes: a committed scratch file must be recoverable\n     by the steps the lesson gives, without losing the file.\"\"\"\n@@ -452,7 +492,9 @@\n         for regression in (helper_refuses_staged_work,\n                            helper_stops_on_git_failure,\n                            conflict_resolutions_all_pass,\n-                           scratch_recovery_as_written):\n+                           scratch_recovery_as_written,\n+                           bundled_commit_rejected,\n+                           combined_edit_rejected):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -259,2 +259,3 @@\n \n+# Padding with unrelated and empty commits must not satisfy a per-path check. (ref: DL-007)\n def bundled_commit_rejected(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-005-003",
+          "version": 3,
+          "intent_ref": "CI-M-005-003",
+          "file": "lessons/04-everyday-git/README.md",
+          "diff": "diff --git a/lessons/04-everyday-git/README.md b/lessons/04-everyday-git/README.md\n--- a/lessons/04-everyday-git/README.md\n+++ b/lessons/04-everyday-git/README.md\n@@ -168,7 +168,9 @@ The `04.messages.*` checks read your last several commit subjects.\n ### Recovery\n \n Staged the wrong file? `git restore --staged <file>`. Committed both\n-together? Fine; do the next exercise's commits separately instead.\n+together? Make one more small edit to each file and commit each on its own\n+(two commits), so each file still ends up with commits of its own when you\n+run the check.\n \n ### Reflection\n \n",
+          "doc_diff": "--- a/lessons/04-everyday-git/README.md\n+++ b/lessons/04-everyday-git/README.md\n@@ -172,1 +172,1 @@\n together? Make one more small edit to each file and commit each on its own\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-005-004",
+          "version": 3,
+          "intent_ref": "CI-M-005-004",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -284,6 +284,25 @@\n     print(\"  combined edit: rejected by 04.commits.two-more\")\n \n \n+def bundled_41_recovery_as_written(tmp):\n+    \"\"\"Lesson 04.1 Recovery: a learner who bundled profile and notes must be\n+    able to reach 04.commits.two-more by the steps the lesson gives.\"\"\"\n+    l = course_after_lesson_03(tmp, \"recover-41\")\n+    l.append(\"workspace/profile.md\", \"4. Merge conflicts\\n\")\n+    l.append(\"workspace/notes/README.md\", \"- [ ] 04 Everyday Git\\n\")\n+    l.commit(\"Update profile and notes together\", \"workspace\")\n+    l.append(\"workspace/profile.md\", \"5. Remotes again\\n\")\n+    l.commit(\"Add a fifth item to the learning list\", \"workspace/profile.md\")\n+    l.append(\"workspace/notes/README.md\", \"- [ ] 05 Branches\\n\")\n+    l.commit(\"Add branches to the progress checklist\", \"workspace/notes/README.md\")\n+    l.write(\"workspace/hello.md\", \"oops\\n\")\n+    l.git(\"restore\", \"workspace/hello.md\")\n+    l.write(\"workspace/scratch.md\", \"scratch\\n\")\n+    out = l.check(\"04\", \"pass\")\n+    assert l.line(out, \"04.commits.two-more\").split()[0] == \"ok\", \"4.1 Recovery did not reach 04.commits.two-more\"\n+    print(\"  lesson 04.1 recovery: reaches 04.commits.two-more\")\n+\n+\n def scratch_recovery_as_written(tmp):\n     \"\"\"Lesson 04 Common Mistakes: a committed scratch file must be recoverable\n     by the steps the lesson gives, without losing the file.\"\"\"\n@@ -494,7 +513,8 @@\n                            conflict_resolutions_all_pass,\n                            scratch_recovery_as_written,\n                            bundled_commit_rejected,\n-                           combined_edit_rejected):\n+                           combined_edit_rejected,\n+                           bundled_41_recovery_as_written):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -286,2 +286,3 @@\n \n+# Follows the Recovery text literally to the checked state. (ref: DL-007)\n def bundled_41_recovery_as_written(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-005-005",
+          "version": 3,
+          "intent_ref": "CI-M-005-005",
+          "file": "lessons/03-git-foundations/README.md",
+          "diff": "diff --git a/lessons/03-git-foundations/README.md b/lessons/03-git-foundations/README.md\n--- a/lessons/03-git-foundations/README.md\n+++ b/lessons/03-git-foundations/README.md\n@@ -339,8 +339,10 @@ python tools/check.py 03\n - If you accidentally staged both files together, `git restore --staged\n   workspace/notes` unstages the folder (Lesson 04 explains this command);\n   then commit the profile alone.\n-- If you committed both together, that is acceptable. Note it in your\n-  reflection and move on; splitting commits is an advanced topic.\n+- If you committed both together, make one more small edit to `profile.md`\n+  and commit it on its own, then one more small edit inside `notes/` and\n+  commit that on its own, so each has a commit of its own when you run the\n+  check.\n \n ### Reflection\n \n",
+          "doc_diff": "--- a/lessons/03-git-foundations/README.md\n+++ b/lessons/03-git-foundations/README.md\n@@ -344,1 +344,1 @@\n - If you committed both together, make one more small edit to `profile.md`\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-005-006",
+          "version": 3,
+          "intent_ref": "CI-M-005-006",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -303,6 +303,25 @@\n     print(\"  lesson 04.1 recovery: reaches 04.commits.two-more\")\n \n \n+def bundled_32_recovery_as_written(tmp):\n+    \"\"\"Lesson 03.2 Recovery: a learner who bundled profile and notes must be\n+    able to reach 03.commit.separate by the steps the lesson gives.\"\"\"\n+    l = fresh_course(tmp, \"recover-32\")\n+    l.write(\"workspace/hello.md\", \"# Hello\\n\")\n+    l.commit(\"Add hello file\", \"workspace/hello.md\")\n+    l.write(\"workspace/profile.md\", PROFILE)\n+    l.write(\"workspace/notes/README.md\", NOTES)\n+    l.write(\"workspace/notes/git-commands.md\", GIT_COMMANDS)\n+    l.commit(\"Add profile and notes together\", \"workspace\")\n+    l.append(\"workspace/profile.md\", \"4. Merge conflicts\\n\")\n+    l.commit(\"Add merge conflicts to learning list\", \"workspace/profile.md\")\n+    l.append(\"workspace/notes/git-commands.md\", \"\\nSee also the profile.\\n\")\n+    l.commit(\"Add a see-also line to the command reference\", \"workspace/notes\")\n+    out = l.check(\"03\", \"pass\")\n+    assert l.line(out, \"03.commit.separate\").split()[0] == \"ok\", \"3.2 Recovery did not reach 03.commit.separate\"\n+    print(\"  lesson 03.2 recovery: reaches 03.commit.separate\")\n+\n+\n def scratch_recovery_as_written(tmp):\n     \"\"\"Lesson 04 Common Mistakes: a committed scratch file must be recoverable\n     by the steps the lesson gives, without losing the file.\"\"\"\n@@ -514,7 +533,8 @@\n                            scratch_recovery_as_written,\n                            bundled_commit_rejected,\n                            combined_edit_rejected,\n-                           bundled_41_recovery_as_written):\n+                           bundled_41_recovery_as_written,\n+                           bundled_32_recovery_as_written):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -305,2 +305,3 @@\n \n+# Follows the Recovery text literally to the checked state. (ref: DL-007)\n def bundled_32_recovery_as_written(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-005-007",
+          "version": 4,
+          "intent_ref": "CI-M-005-001",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -24,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n   by combining them, not only the resolutions that change the main line.\n - Lesson 04 Exercise 4.3 recovery for a committed `scratch.md` now ends in\n   the state `04.scratch.untracked` checks for.\n+- `03.commit.separate` and `04.commits.two-more` require commits that touch\n+  only their own file or folder, not just enough commits overall. Recovery\n+  text in Exercises 3.2 and 4.1 now tells a learner who bundled the files how\n+  to reach the checked state.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -27,1 +27,1 @@\n - `03.commit.separate` and `04.commits.two-more` require commits that touch\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-005-008",
+          "version": 4,
+          "intent_ref": "CI-M-005-001",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -48,6 +48,14 @@ Entry template:\n - Expected improvement: a learner who committed the file by reflex can get to green without losing it.\n - Re-evaluate: yes — when lesson 04 progress data exists\n \n+## 2026-09-29 — Separate-commit checks require a commit per file\n+- Observed problem: `03.commit.separate` counted learner commits (three or more) and `04.commits.two-more` counted commits touching each file, so one bundled commit plus unrelated or empty commits passed, and one combined edit passed as two. The old Recovery text also said bundling was acceptable, which would have made the stricter check unpassable.\n+- Evidence: adversarial review finding F6: one commit holding hello, profile and notes, then a favorites commit and an empty commit, passed `03.commit.separate`. Selftest now walks both Recovery texts literally. `python tools/selftest.py` wall time at this commit: 13.2s.\n+- Hypothesis: The lessons promise \"one commit per thing\"; the check should look at what each commit touched, since history carries that evidence, and the recovery path must lead to a state the check accepts.\n+- Change made: `exclusive_commits(path, *others)` in `tools/check.py`; lesson 03 needs a commit of its own for each of hello, profile and notes, lesson 04 needs two for profile.md and two for notes/README.md relative to each other. Exercise 3.2 and 4.1 Recovery now say to make one more small edit to each file and commit each alone. Four selftest regressions.\n+- Expected improvement: a learner who bundled files is told exactly what to do instead of being told it is fine, and false green from padding commits is gone.\n+- Re-evaluate: yes — when lesson 03 and 04 progress data exists\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -57,1 +57,2 @@\n - Re-evaluate: yes — when lesson 03 and 04 progress data exists\n+- Decisions: DL-007 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    },
+    {
+      "id": "M-006",
+      "version": 2,
+      "number": 6,
+      "name": "F7 markdown checks ignore fenced and inline literals",
+      "files": [
+        "tools/check.py",
+        "tools/selftest.py",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "a fence scanner splits text into prose and top-level fenced blocks honouring fence char and length",
+        "inline code spans are blanked before emphasis/link/list/heading patterns",
+        "01 and 09 code-block rules test the extracted blocks (09 requires an info string)",
+        "01.profile.inline-code tests prose with inline spans intact",
+        "tilde fences and unclosed fences follow CommonMark; indented code blocks are not treated as code (outside taught subset)"
+      ],
+      "acceptance_criteria": [
+        "PROFILE fixture wrapped in a four-backtick text fence fails 01 (h1 h2 bold italic list link etc report missing)",
+        "PROFILE containing a four-backtick fence that shows a three-backtick example still passes",
+        "valid PROFILE and CAPSTONE fixtures pass",
+        "unclosed tilde-fenced PROFILE fails 01.profile.h1"
+      ],
+      "tests": [
+        "selftest regression fenced_profile_rejected and nested_example_fence_ok"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-006-001",
+          "version": 2,
+          "file": "tools/check.py",
+          "function": "split_fences / prose / has_prose / profile_check / CAP_RULES / 09.readme.markdown",
+          "behavior": "split_fences(text) -> (prose, blocks): line scan; an opening line matching ^ {0,3}(`{3,}|~{3,})(.*) starts a block recording char and length and info string; a closing line is the same char with length >= opening and nothing else; unclosed block runs to end of text (CommonMark). Indented (4-space) code blocks are not detected: their lines stay in prose (outside the taught subset, DL-008). prose keeps non-block lines with blocks replaced by blank lines. blocks is a list of (info, body). strip_inline_code(prose) replaces backtick spans with spaces. profile_check gains a target selector: prose (default, inline code stripped), inline (prose with spans intact, used by 01.profile.inline-code), blocks (01.profile.code-block passes when any block exists). CAP_RULES code rule becomes a block test requiring a non-empty info string; other CAP rules run on stripped prose. Module docstring documents the supported subset (backtick/tilde fences, unclosed fence to EOF, no indented code blocks) and states rendered-preview verification stays the learner's job.",
+          "decision_refs": [
+            "DL-008"
+          ]
+        },
+        {
+          "id": "CI-M-006-002",
+          "version": 2,
+          "file": "tools/selftest.py",
+          "function": "fenced_profile_rejected / nested_example_fence_ok",
+          "behavior": "fenced: fresh course, write ````text + newline + PROFILE + ```` to profile.md; assert check 01 fails and 01.profile.h1, 01.profile.bold, 01.profile.link lines are --. tilde: same with a ~~~ fence left unclosed; assert 01.profile.h1 is --. nested: PROFILE plus a section containing a four-backtick fence that shows a three-backtick example; assert check 01 passes.",
+          "decision_refs": [
+            "DL-002",
+            "DL-008"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-006-001",
+          "version": 2,
+          "intent_ref": "CI-M-006-001",
+          "file": "tools/check.py",
+          "diff": "diff --git a/tools/check.py b/tools/check.py\n--- a/tools/check.py\n+++ b/tools/check.py\n@@ -7,6 +7,14 @@ Each check is a small function registered with the lesson it belongs to and\n the concept it tests. A check returns None when satisfied, or a\n (problem, look, try) triple: what is wrong, a command to inspect the state,\n and what to do about it. review.py imports CHECKS to map failures to concepts.\n+\n+The Markdown checks for lessons 01 and 09 read what a learner would see\n+rendered: top-level fenced code blocks (backtick or tilde, closed by the same\n+character at least as long; an unclosed fence runs to the end of the file, as\n+in CommonMark) and inline code spans are set aside before headings, emphasis,\n+links and lists are matched. Indented code blocks are outside the taught\n+subset and are not detected. The checker cannot see a rendered preview;\n+looking at one stays the learner's job.\n \"\"\"\n import json\n import os\n@@ -102,6 +110,45 @@ def has(pattern, text):\n     return re.search(pattern, text, re.MULTILINE) is not None\n \n \n+FENCE = re.compile(r\"^ {0,3}(`{3,}|~{3,})(.*)$\")\n+\n+\n+def split_fences(text):\n+    \"\"\"Split Markdown into (prose, blocks). blocks is a list of (info, body)\n+    for the top-level fenced code blocks; prose is the text with every fence\n+    and its contents blanked, so line structure is unchanged.\"\"\"\n+    prose, blocks, fence = [], [], None  # fence: (marker, info, body lines)\n+    for line in text.split(\"\\n\"):\n+        if fence is None:\n+            m = FENCE.match(line)\n+            if m and not (m.group(1)[0] == \"`\" and \"`\" in m.group(2)):\n+                fence = (m.group(1), m.group(2).strip(), [])\n+                line = \"\"\n+        else:\n+            marker, info, body = fence\n+            s = line.strip()\n+            if len(line) - len(line.lstrip(\" \")) <= 3 and len(s) >= len(marker) and set(s) == {marker[0]}:\n+                blocks.append((info, \"\\n\".join(body)))\n+                fence = None\n+            else:\n+                body.append(line)\n+            line = \"\"\n+        prose.append(line)\n+    if fence:\n+        blocks.append((fence[1], \"\\n\".join(fence[2])))\n+    return \"\\n\".join(prose), blocks\n+\n+\n+def strip_inline_code(prose):\n+    \"\"\"Blank out backtick code spans so `**x**` is not read as bold.\"\"\"\n+    return re.sub(r\"(?<!`)(`+)(?!`)(.+?)(?<!`)\\1(?!`)\", lambda m: \" \" * len(m.group()), prose)\n+\n+\n+def has_prose(pattern, text):\n+    \"\"\"`pattern` matches Markdown outside fenced blocks and inline code.\"\"\"\n+    return has(pattern, strip_inline_code(split_fences(text)[0]))\n+\n+\n def broken_links(folder):\n     \"\"\"Relative links in every .md under folder whose target file does not exist.\"\"\"\n     broken = []\n@@ -164,13 +211,22 @@ def _():\n PROFILE = \"workspace/profile.md\"\n \n \n-def profile_check(cid, concept, desc, pattern, problem, tip):\n+def profile_check(cid, concept, desc, pattern, problem, tip, target=\"prose\"):\n+    \"\"\"target: 'prose' (outside fences and inline code), 'inline' (outside\n+    fences, inline code kept) or 'blocks' (a fenced block exists; no pattern).\"\"\"\n     @check(\"01\", cid, concept, desc)\n     def _():\n         text = read(PROFILE)\n         if text is None:\n             return (f\"{PROFILE} was not found\", \"ls workspace\", \"Create it (Exercise 1.1)\")\n-        if not has(pattern, text):\n+        prose, blocks = split_fences(text)\n+        if target == \"blocks\":\n+            found = bool(blocks)\n+        elif target == \"inline\":\n+            found = has(pattern, prose)\n+        else:\n+            found = has_prose(pattern, text)\n+        if not found:\n             return (problem, f\"cat {PROFILE}\", tip)\n \n \n@@ -183,13 +239,13 @@ profile_check(\"01.profile.bold\", \"emphasis\", \"has bold text\", r\"\\*\\*\\S[^*]*\\S\\*\\\n profile_check(\"01.profile.italic\", \"emphasis\", \"has italic text\", r\"(?<!\\*)\\*[^*\\s][^*]*\\*(?!\\*)|(?<!_)_[^_\\s][^_]*_(?!_)\",\n               \"no *italic* text\", \"Wrap a word in single stars: *word*\")\n profile_check(\"01.profile.inline-code\", \"inline-code\", \"has inline code\", r\"`[^`\\n]+`\",\n-              \"no `inline code`\", \"Wrap a command or program name in backticks\")\n+              \"no `inline code`\", \"Wrap a command or program name in backticks\", target=\"inline\")\n profile_check(\"01.profile.list\", \"lists\", \"has a list\", r\"^\\s*([-*+]|\\d+\\.) \\S\",\n               \"no list found\", \"Lines starting with '- ' or '1. '\")\n profile_check(\"01.profile.nested\", \"lists\", \"has a nested list item\", r\"^\\s*([-*+]|\\d+\\.) \\S.*\\n(\\s*([-*+]|\\d+\\.) .*\\n)*?\\s{2,}([-*+]|\\d+\\.) \\S\",\n               \"no indented list item under another item\", \"Indent a '- ' line by two or more spaces below a list item\")\n-profile_check(\"01.profile.code-block\", \"code-blocks\", \"has a fenced code block\", r\"^```[\\s\\S]*?^```\",\n-              \"no fenced code block (three backticks, content, three backticks)\", \"See Exercise 1.2\")\n+profile_check(\"01.profile.code-block\", \"code-blocks\", \"has a fenced code block\", None,\n+              \"no fenced code block (three backticks, content, three backticks)\", \"See Exercise 1.2\", target=\"blocks\")\n profile_check(\"01.profile.link\", \"links\", \"has a link\", r\"(?<!!)\\[[^\\]]+\\]\\([^)\\s]+\\)\",\n               \"no [text](url) link\", \"Add a link in the Links section (Exercise 1.3)\")\n profile_check(\"01.profile.image\", \"images\", \"has an image with alt text\", r\"!\\[[^\\]]+\\]\\([^)\\s]+\\)\",\n@@ -471,7 +527,7 @@ CAP_RULES = [\n     (\"ordered\", r\"^\\s*\\d+\\. \\S\", \"an ordered list\"),\n     (\"unordered\", r\"^\\s*[-*+] (?!\\[)\\S\", \"an unordered list\"),\n     (\"link\", r\"(?<!!)\\[[^\\]]+\\]\\([^)\\s]+\\)\", \"a link\"),\n-    (\"code\", r\"^```[a-z]+\\n[\\s\\S]*?^```\", \"a fenced code block with a language\"),\n+    (\"code\", None, \"a fenced code block with a language\"),  # tested on the extracted blocks\n     (\"table\", r\"^\\|.*\\|\\s*\\n\\|?\\s*:?-{3,}\", \"a table\"),\n     (\"checklist\", r\"^\\s*- \\[[ x]\\] \\S\", \"a checklist\"),\n ]\n@@ -482,7 +538,9 @@ def _():\n     text = read(f\"{CAP}/README.md\")\n     if text is None:\n         return (f\"{CAP}/README.md not found\", \"ls workspace/capstone\", \"Create it on your capstone branch\")\n-    missing = [label for _, pat, label in CAP_RULES if not has(pat, text)]\n+    blocks = split_fences(text)[1]\n+    missing = [label for key, pat, label in CAP_RULES\n+               if not (any(info for info, _ in blocks) if key == \"code\" else has_prose(pat, text))]\n     if missing:\n         return (\"missing: \" + \", \".join(missing), f\"cat {CAP}/README.md\", \"See the Markdown outcomes list in Exercise 9.1\")\n \n",
+          "doc_diff": "--- a/tools/check.py\n+++ b/tools/check.py\n@@ -112,4 +112,7 @@\n     return re.search(pattern, text, re.MULTILINE) is not None\n \n \n+# Opening fence: up to three spaces of indent, then three or more backticks or tildes.\n+# Four-space indented code blocks are outside the taught subset and are not\n+# detected; their text counts as prose (false red over false green). (ref: DL-008)\n FENCE = re.compile(r\"^ {0,3}(`{3,}|~{3,})(.*)$\")\n@@ -138,2 +138,4 @@\n         prose.append(line)\n+    # CommonMark runs an unclosed fence to the end of the document, so its content is\n+    # code; treating it as prose would give false green for a forgotten closer. (ref: DL-008)\n     if fence:\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-006-002",
+          "version": 3,
+          "intent_ref": "CI-M-006-002",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -322,6 +322,27 @@\n     print(\"  lesson 03.2 recovery: reaches 03.commit.separate\")\n \n \n+def fenced_profile_rejected(tmp):\n+    \"\"\"Markdown shown inside a code fence is not rendered Markdown.\"\"\"\n+    l = fresh_course(tmp, \"fenced\")\n+    l.write(\"workspace/profile.md\", \"````text\\n\" + PROFILE + \"````\\n\")\n+    out = l.check(\"01\", \"fail\")\n+    for cid in (\"01.profile.h1\", \"01.profile.bold\", \"01.profile.link\"):\n+        assert l.line(out, cid).split()[0] == \"--\", f\"{cid} passed on fenced text\"\n+    l.write(\"workspace/profile.md\", \"~~~\\n\" + PROFILE)  # unclosed: runs to the end\n+    out = l.check(\"01\", \"fail\")\n+    assert l.line(out, \"01.profile.h1\").split()[0] == \"--\", \"an unclosed tilde fence was read as prose\"\n+    print(\"  fenced profile: rejected, unclosed fence included\")\n+\n+\n+def nested_example_fence_ok(tmp):\n+    \"\"\"A four-backtick fence that shows a three-backtick example is one block.\"\"\"\n+    l = fresh_course(tmp, \"nested\")\n+    l.write(\"workspace/profile.md\", PROFILE + \"\\n## Fence example\\n\\n````markdown\\n```bash\\ngit status\\n```\\n````\\n\")\n+    l.check(\"01\", \"pass\")\n+    print(\"  nested example fence: profile still passes\")\n+\n+\n def scratch_recovery_as_written(tmp):\n     \"\"\"Lesson 04 Common Mistakes: a committed scratch file must be recoverable\n     by the steps the lesson gives, without losing the file.\"\"\"\n@@ -534,7 +555,9 @@\n                            bundled_commit_rejected,\n                            combined_edit_rejected,\n                            bundled_41_recovery_as_written,\n-                           bundled_32_recovery_as_written):\n+                           bundled_32_recovery_as_written,\n+                           fenced_profile_rejected,\n+                           nested_example_fence_ok):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -324,2 +324,3 @@\n \n+# Fenced Markdown is not rendered Markdown; an unclosed fence runs to end of file. (ref: DL-008)\n def fenced_profile_rejected(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-006-003",
+          "version": 4,
+          "intent_ref": "CI-M-006-001",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -28,6 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n   only their own file or folder, not just enough commits overall. Recovery\n   text in Exercises 3.2 and 4.1 now tells a learner who bundled the files how\n   to reach the checked state.\n+- The Lesson 01 and Lesson 09 Markdown checks ignore fenced code blocks and\n+  inline code spans, so Markdown shown as an example no longer counts as\n+  Markdown used. Code-block rules test the fenced blocks themselves.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -31,1 +31,1 @@\n - The Lesson 01 and Lesson 09 Markdown checks ignore fenced code blocks and\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-006-004",
+          "version": 4,
+          "intent_ref": "CI-M-006-001",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -56,6 +56,14 @@ Entry template:\n - Expected improvement: a learner who bundled files is told exactly what to do instead of being told it is fine, and false green from padding commits is gone.\n - Re-evaluate: yes — when lesson 03 and 04 progress data exists\n \n+## 2026-09-29 — Markdown checks stop counting text inside code fences\n+- Observed problem: The lesson 01 and 09 checks ran regular expressions over the raw file, so a profile wrapped in a code fence (shown as text, rendering none of it) passed all thirteen checks, and `**x**` in backticks counted as bold.\n+- Evidence: adversarial review finding F7: the PROFILE fixture wrapped in a four-backtick fence passed every 01 check. `python tools/selftest.py` wall time at this commit: 14.6s.\n+- Hypothesis: Structure only counts if it renders; a small line scanner following the CommonMark fence rules is enough for the subset the lessons teach, without a parser dependency.\n+- Change made: `split_fences` (backtick and tilde fences, closing fence at least as long, unclosed fence runs to end of file) and `strip_inline_code` in `tools/check.py`; code-block rules test the extracted blocks, and the Lesson 09 rule requires an info string. Indented code blocks are not detected (outside the taught subset). Three selftest cases: fenced, unclosed tilde, and a nested example fence.\n+- Expected improvement: a learner cannot reach green by pasting the exercise inside a code block; rendered-preview checking remains the learner's job.\n+- Re-evaluate: yes — when lesson 01 and 09 progress data exists\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -65,1 +65,2 @@\n - Re-evaluate: yes — when lesson 01 and 09 progress data exists\n+- Decisions: DL-008 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    },
+    {
+      "id": "M-007",
+      "version": 2,
+      "number": 7,
+      "name": "F5 lesson 07 rejects unpushed local edits as proof of pull",
+      "files": [
+        "tools/check.py",
+        "lessons/07-remotes/README.md",
+        "tools/selftest.py",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "first step: read .learning/progress.json; if current_lesson is 07, stop and queue this change (DL-013)",
+        "07.remote.pushed reports behind and diverged distinctly and passes when main contains origin/main",
+        "07.remote.pulled requires two learner reading-list commits reachable from origin/main and main containing origin/main",
+        "lesson 07 Check Your Work states what the checker verifies and that clone provenance is learner-verified via git log"
+      ],
+      "acceptance_criteria": [
+        "F5 repro (push baseline then two local reading-list commits and no pull) fails 07.remote.pulled",
+        "clone/push/pull walk passes",
+        "full walk through 09 then check all still passes 07"
+      ],
+      "tests": [
+        "selftest regression local_edits_not_pull"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-007-001",
+          "version": 1,
+          "file": "tools/check.py",
+          "function": "07.remote.pushed / 07.remote.pulled / learner_commits",
+          "behavior": "learner_commits accepts rev (default HEAD) passed to git log. pushed: no origin/main -> push hint; main ancestor of origin/main and unequal -> 'main is behind origin/main: git pull'; origin/main not ancestor of main -> 'main and origin/main have diverged: git pull, resolve, git push'; otherwise ok. pulled desc: 'origin/main carries a second reading-list commit and main contains it'; fail when origin/main is not an ancestor of main (git pull) or learner_commits('workspace/reading-list.md', rev='origin/main') has < 2 entries (message: the remote does not have a second reading-list commit yet; make it in ../learn-git-clone, push there, then git pull here).",
+          "decision_refs": [
+            "DL-009"
+          ]
+        },
+        {
+          "id": "CI-M-007-002",
+          "version": 1,
+          "file": "lessons/07-remotes/README.md",
+          "function": "Exercise 7.1 Check Your Work",
+          "behavior": "Replace 'main and origin/main match, and that at least one commit arrived via the remote' with: the checker confirms origin exists, your main contains everything on origin/main, and the remote holds a second reading-list commit that your main also has. It cannot tell which folder made that commit; confirm that yourself with git log --format='%h %an %s' -- workspace/reading-list.md and the clone's git log.",
+          "decision_refs": [
+            "DL-009"
+          ]
+        },
+        {
+          "id": "CI-M-007-003",
+          "version": 1,
+          "file": "tools/selftest.py",
+          "function": "local_edits_not_pull",
+          "behavior": "Fresh course through lesson 05 prerequisites (reading-list committed), bare remote, push; append two reading-list lines locally in two commits with no push; assert 07.remote.pulled line is '--'. Happy-path lesson_07 and the final check all remain unchanged and passing.",
+          "decision_refs": [
+            "DL-002",
+            "DL-009"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-007-001",
+          "version": 3,
+          "intent_ref": "CI-M-007-001",
+          "file": "tools/check.py",
+          "diff": "diff --git a/tools/check.py b/tools/check.py\n--- a/tools/check.py\n+++ b/tools/check.py\n@@ -68,8 +68,14 @@ def curriculum_tip():\n     return git(\"log\", \"-1\", \"--format=%H\", \"--\", *CURRICULUM_PATHS)\n \n \n-def learner_commits(*paths, merges=None):\n-    \"\"\"Subjects of the learner's own commits touching `paths`, newest first.\n+def is_ancestor(older, newer):\n+    return subprocess.run([\"git\", \"merge-base\", \"--is-ancestor\", older, newer],\n+                          cwd=ROOT, capture_output=True).returncode == 0\n+\n+\n+def learner_commits(*paths, merges=None, rev=\"HEAD\"):\n+    \"\"\"Subjects of the learner's own commits touching `paths` reachable from\n+    `rev`, newest first.\n \n     A commit counts as the learner's when it touches these paths and does not\n     touch the curriculum. That is a property of the commit itself, so it holds\n@@ -77,7 +83,7 @@ def learner_commits(*paths, merges=None):\n     curriculum updates pulled in later, or a course installed by cloning.\n     \"\"\"\n     flag = {True: [\"--merges\"], False: [\"--no-merges\"], None: []}[merges]\n-    out = git(\"log\", \"--format=%H %s\", *flag, \"--\", *paths)\n+    out = git(\"log\", \"--format=%H %s\", *flag, rev, \"--\", *paths)\n     return [line.split(\" \", 1)[1] for line in out.splitlines()\n             if \" \" in line and not is_maintainer(line.split(\" \", 1)[0])]\n \n@@ -441,21 +447,31 @@ def _():\n                 \"git remote add origin ../learn-git-remote.git (Exercise 7.1)\")\n \n \n+NOT_PUSHED = (\"origin/main does not exist; nothing has been pushed\", \"git log --oneline --all -3\",\n+              \"git push -u origin main\")\n+\n+\n @check(\"07\", \"07.remote.pushed\", \"push\", \"main has been pushed and has not diverged from origin/main\")\n def _():\n     if not git(\"rev-parse\", \"--verify\", \"origin/main\"):\n-        return (\"origin/main does not exist; nothing has been pushed\", \"git log --oneline --all -3\",\n-                \"git push -u origin main\")\n-    ancestor = subprocess.run([\"git\", \"merge-base\", \"--is-ancestor\", \"origin/main\", \"main\"], cwd=ROOT)\n-    if ancestor.returncode != 0:\n-        return (\"origin/main has commits that main does not\", \"git status\", \"git pull, resolve if needed, then git push\")\n+        return NOT_PUSHED\n+    if is_ancestor(\"main\", \"origin/main\") and git(\"rev-parse\", \"main\") != git(\"rev-parse\", \"origin/main\"):\n+        return (\"main is behind origin/main\", \"git status\", \"git pull\")\n+    if not is_ancestor(\"origin/main\", \"main\"):\n+        return (\"main and origin/main have diverged\", \"git log --oneline --graph --all -6\",\n+                \"git pull, resolve if needed, then git push\")\n \n \n-@check(\"07\", \"07.remote.pulled\", \"pull\", \"reading-list.md was changed by a commit made in the clone\")\n+@check(\"07\", \"07.remote.pulled\", \"pull\", \"origin/main carries a second reading-list commit and main contains it\")\n def _():\n-    if len(learner_commits(\"workspace/reading-list.md\")) < 2:\n-        return (\"reading-list.md has only its original commit\", \"git log --oneline -- workspace/reading-list.md\",\n-                \"Commit a change in ../learn-git-clone, push there, then git pull here\")\n+    if not git(\"rev-parse\", \"--verify\", \"origin/main\"):\n+        return NOT_PUSHED\n+    if not is_ancestor(\"origin/main\", \"main\"):\n+        return (\"main does not contain everything on origin/main\", \"git status\", \"git pull\")\n+    if len(learner_commits(\"workspace/reading-list.md\", rev=\"origin/main\")) < 2:\n+        return (\"the remote does not have a second reading-list commit yet\",\n+                \"git log --oneline origin/main -- workspace/reading-list.md\",\n+                \"Make it in ../learn-git-clone, push there, then git pull here (Exercise 7.1)\")\n \n \n # ---------------------------------------------------------------- lesson 08\n",
+          "doc_diff": "--- a/tools/check.py\n+++ b/tools/check.py\n@@ -470,2 +470,6 @@\n         return (\"main does not contain everything on origin/main\", \"git status\", \"git pull\")\n+    # Stateless on purpose: requiring main == origin/main would fail once lessons 08-09\n+    # advance main. The second commit must be on origin/main, which rejects unpushed\n+    # local edits. Which clone authored it is not provable from history, so lesson 07\n+    # labels that step as self-verification. (ref: DL-009)\n     if len(learner_commits(\"workspace/reading-list.md\", rev=\"origin/main\")) < 2:\n",
+          "comments": "Apply changes in order within the milestone; diffs were generated from a sequential scratch copy and tools/selftest.py plus validate_curriculum.py passed after each milestone. DL-013 guard: before applying, read .learning/progress.json; if current_lesson is 07, stop and queue this milestone. "
+        },
+        {
+          "id": "CC-M-007-002",
+          "version": 3,
+          "intent_ref": "CI-M-007-002",
+          "file": "lessons/07-remotes/README.md",
+          "diff": "diff --git a/lessons/07-remotes/README.md b/lessons/07-remotes/README.md\n--- a/lessons/07-remotes/README.md\n+++ b/lessons/07-remotes/README.md\n@@ -178,8 +178,11 @@ This changes a nickname only; nothing is downloaded or deleted.\n python tools/check.py 07\n ```\n \n-The checker confirms `origin` exists, `main` and `origin/main` match, and\n-that at least one commit arrived via the remote.\n+The checker confirms `origin` exists, your `main` contains everything on\n+`origin/main`, and the remote holds a second `reading-list.md` commit that\n+your `main` also has. It cannot tell which folder made that commit; confirm\n+that yourself with `git log --format='%h %an %s' -- workspace/reading-list.md`\n+and the clone's `git log`.\n \n ### What You Should Notice\n \n",
+          "doc_diff": "--- a/lessons/07-remotes/README.md\n+++ b/lessons/07-remotes/README.md\n@@ -183,1 +183,1 @@\n The checker confirms `origin` exists, your `main` contains everything on\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-007-003",
+          "version": 3,
+          "intent_ref": "CI-M-007-003",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -343,6 +343,25 @@\n     print(\"  nested example fence: profile still passes\")\n \n \n+def local_edits_not_pull(tmp):\n+    \"\"\"Two local reading-list commits are not a pull: the remote must have\n+    the second commit and main must contain it.\"\"\"\n+    l = fresh_course(tmp, \"local-edits\")\n+    l.write(\"workspace/reading-list.md\", \"# Reading list\\n\\n- Pro Git\\n\")\n+    l.commit(\"Add reading list\", \"workspace/reading-list.md\")\n+    remote = os.path.join(tmp, \"local-edits-remote.git\")\n+    l.git(\"init\", \"-q\", \"--bare\", \"-b\", \"main\", remote)\n+    l.git(\"remote\", \"add\", \"origin\", remote)\n+    l.git(\"push\", \"-q\", \"-u\", \"origin\", \"main\")\n+    l.append(\"workspace/reading-list.md\", \"- A novel\\n\")\n+    l.commit(\"Add a novel to the reading list\", \"workspace/reading-list.md\")\n+    l.append(\"workspace/reading-list.md\", \"- A poem\\n\")\n+    l.commit(\"Add a poem to the reading list\", \"workspace/reading-list.md\")\n+    out = l.check(\"07\", \"fail\")\n+    assert l.line(out, \"07.remote.pulled\").split()[0] == \"--\", \"unpushed local edits passed 07.remote.pulled\"\n+    print(\"  local edits: not accepted as a pull\")\n+\n+\n def scratch_recovery_as_written(tmp):\n     \"\"\"Lesson 04 Common Mistakes: a committed scratch file must be recoverable\n     by the steps the lesson gives, without losing the file.\"\"\"\n@@ -557,7 +576,8 @@\n                            bundled_41_recovery_as_written,\n                            bundled_32_recovery_as_written,\n                            fenced_profile_rejected,\n-                           nested_example_fence_ok):\n+                           nested_example_fence_ok,\n+                           local_edits_not_pull):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -345,2 +345,3 @@\n \n+# The remote must carry the second commit; local edits alone are not a pull. (ref: DL-009)\n def local_edits_not_pull(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-007-004",
+          "version": 4,
+          "intent_ref": "CI-M-007-001",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -31,6 +31,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n - The Lesson 01 and Lesson 09 Markdown checks ignore fenced code blocks and\n   inline code spans, so Markdown shown as an example no longer counts as\n   Markdown used. Code-block rules test the fenced blocks themselves.\n+- `07.remote.pulled` requires the second `reading-list.md` commit to be on\n+  `origin/main` and contained in `main`; `07.remote.pushed` reports \"behind\"\n+  and \"diverged\" separately. Lesson 07 Check Your Work says what the checker\n+  can and cannot verify.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -34,1 +34,1 @@\n - `07.remote.pulled` requires the second `reading-list.md` commit to be on\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-007-005",
+          "version": 4,
+          "intent_ref": "CI-M-007-001",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -64,6 +64,14 @@ Entry template:\n - Expected improvement: a learner cannot reach green by pasting the exercise inside a code block; rendered-preview checking remains the learner's job.\n - Re-evaluate: yes — when lesson 01 and 09 progress data exists\n \n+## 2026-09-29 — Lesson 07 no longer accepts unpushed local edits as a pull\n+- Observed problem: `07.remote.pulled` counted reading-list commits on local `main`, so two local commits and no pull passed; `07.remote.pushed` passed whenever `main` was ahead of `origin/main` and gave one message for two different problems.\n+- Evidence: adversarial review finding F5: push a baseline, make two local reading-list commits, never pull, and lesson 07 passed. `python tools/selftest.py` wall time at this commit: 14.3s.\n+- Hypothesis: Which folder authored a commit cannot be proven from history, but whether the remote has the commit and whether main contains it can. The rest is learner self-verification and the lesson should say so.\n+- Change made: `07.remote.pushed`: distinct behind and diverged messages. `07.remote.pulled`: origin/main must carry two learner reading-list commits and main must contain origin/main (stateless, so it survives lessons 08-09 advancing main). `learner_commits` takes a `rev`. Check Your Work states what is checked and points to `git log` for provenance. One selftest regression.\n+- Expected improvement: a learner who never pulled is sent to the clone, and the lesson does not claim more than the checker verifies.\n+- Re-evaluate: yes — when lesson 07 progress data exists\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -73,1 +73,2 @@\n - Re-evaluate: yes — when lesson 07 progress data exists\n+- Decisions: DL-009 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    },
+    {
+      "id": "M-008",
+      "version": 1,
+      "number": 8,
+      "name": "F9 progress file is validated and written atomically",
+      "files": [
+        "tools/check.py",
+        "tools/review.py",
+        "tools/selftest.py",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "missing progress file yields the default record",
+        "unreadable/invalid JSON/non-dict/lessons not a dict of dicts raises a ProgressError caught in main which prints path and reason and recovery and returns 2 without writing",
+        "save writes progress.json.tmp in the same folder then os.replace",
+        "review.load skips records failing the same shape test with a printed reason"
+      ],
+      "acceptance_criteria": [
+        "invalid JSON in progress.json stays byte-identical after check.py 00 and exit is 2",
+        "valid run leaves no .tmp file",
+        "review.py on a folder with one bad-shape file reports it skipped and aggregates the rest"
+      ],
+      "tests": [
+        "selftest regression malformed_progress_preserved"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-008-001",
+          "version": 1,
+          "file": "tools/check.py",
+          "function": "load_progress / save_progress / main",
+          "behavior": "ProgressError(Exception). load_progress: FileNotFoundError -> default record; OSError or ValueError -> ProgressError(path, reason); decoded value must be a dict whose 'lessons' is a dict of dicts and 'current_lesson' a str, else ProgressError. save_progress: dump to PROGRESS + '.tmp' then os.replace(tmp, PROGRESS). main wraps load_progress: on ProgressError print 'Your progress file could not be read: <reason>. It has not been changed. Move it aside (e.g. rename to progress.broken.json) to start fresh, or fix the JSON.' and return 2.",
+          "decision_refs": [
+            "DL-010"
+          ]
+        },
+        {
+          "id": "CI-M-008-002",
+          "version": 1,
+          "file": "tools/review.py",
+          "function": "load",
+          "behavior": "After json.load, apply the same shape test as check.load_progress (import a shared valid_progress(data) predicate from check.py rather than duplicating it); print 'skipping <path>: not a progress record' for failures.",
+          "decision_refs": [
+            "DL-010"
+          ]
+        },
+        {
+          "id": "CI-M-008-003",
+          "version": 1,
+          "file": "tools/selftest.py",
+          "function": "malformed_progress_preserved",
+          "behavior": "Fresh course; write '{not json' to .learning/progress.json; run check.py 00 directly; assert returncode 2, file bytes unchanged, no progress.json.tmp. Then a valid run leaves no .tmp. review.py on a temp folder with one valid and one '[]' file exits 0 and prints 'skipping'.",
+          "decision_refs": [
+            "DL-002",
+            "DL-010"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-008-001",
+          "version": 2,
+          "intent_ref": "CI-M-008-001",
+          "file": "tools/check.py",
+          "diff": "diff --git a/tools/check.py b/tools/check.py\n--- a/tools/check.py\n+++ b/tools/check.py\n@@ -615,19 +615,40 @@ def now():\n     return datetime.now(timezone.utc).isoformat(timespec=\"seconds\")\n \n \n+class ProgressError(Exception):\n+    \"\"\"The progress file exists but cannot be trusted.\"\"\"\n+\n+\n+def valid_progress(data):\n+    \"\"\"True if `data` has the shape check.py and review.py rely on.\"\"\"\n+    return (isinstance(data, dict) and isinstance(data.get(\"current_lesson\"), str)\n+            and isinstance(data.get(\"lessons\"), dict)\n+            and all(isinstance(r, dict) for r in data[\"lessons\"].values()))\n+\n+\n def load_progress():\n+    \"\"\"The saved record; a fresh one if there is no file. A file that is\n+    there but unreadable raises ProgressError rather than being replaced.\"\"\"\n     try:\n         with open(PROGRESS, encoding=\"utf-8\") as fh:\n-            return json.load(fh)\n-    except (OSError, ValueError):\n+            data = json.load(fh)\n+    except FileNotFoundError:\n         return {\"version\": 1, \"current_lesson\": \"00\", \"lessons\": {}}\n+    except (OSError, ValueError) as err:\n+        raise ProgressError(f\"{PROGRESS}: {err}\")\n+    if not valid_progress(data):\n+        raise ProgressError(f\"{PROGRESS}: not a progress record\")\n+    return data\n \n \n def save_progress(data):\n+    \"\"\"Write beside the file, then swap it in, so a crash cannot leave half a file.\"\"\"\n     os.makedirs(os.path.dirname(PROGRESS), exist_ok=True)\n-    with open(PROGRESS, \"w\", encoding=\"utf-8\") as fh:\n+    tmp = PROGRESS + \".tmp\"\n+    with open(tmp, \"w\", encoding=\"utf-8\") as fh:\n         json.dump(data, fh, indent=2)\n         fh.write(\"\\n\")\n+    os.replace(tmp, PROGRESS)\n \n \n def lesson_record(data, lesson):\n@@ -712,7 +733,12 @@ def main(argv):\n     if not git(\"rev-parse\", \"--show-toplevel\"):\n         print(\"This folder is not a Git repository. Run this from the course folder (see START_HERE.md).\")\n         return 2\n-    data = load_progress()\n+    try:\n+        data = load_progress()\n+    except ProgressError as err:\n+        print(f\"Your progress file could not be read: {err}. It has not been changed. \"\n+              \"Move it aside (e.g. rename it to progress.broken.json) to start fresh, or fix the JSON.\")\n+        return 2\n     if argv[:1] == [\"hint\"] and len(argv) == 2:\n         lesson_record(data, argv[1].zfill(2))[\"hints_used\"] += 1\n         save_progress(data)\n",
+          "doc_diff": "--- a/tools/check.py\n+++ b/tools/check.py\n@@ -626,2 +626,4 @@\n         return {\"version\": 1, \"current_lesson\": \"00\", \"lessons\": {}}\n+    # Missing means first run. Anything else unreadable stops the run: replacing it with\n+    # an empty record would erase the learner's history on the next save. (ref: DL-010)\n     except (OSError, ValueError) as err:\n@@ -640,2 +640,4 @@\n         fh.write(\"\\n\")\n+    # The temp file shares PROGRESS's directory because os.replace is atomic only within\n+    # one filesystem. (ref: DL-010)\n     os.replace(tmp, PROGRESS)\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-008-002",
+          "version": 2,
+          "intent_ref": "CI-M-008-002",
+          "file": "tools/review.py",
+          "diff": "diff --git a/tools/review.py b/tools/review.py\n--- a/tools/review.py\n+++ b/tools/review.py\n@@ -30,9 +30,14 @@ def load(target):\n     for p in paths:\n         try:\n             with open(p, encoding=\"utf-8\") as fh:\n-                records.append(json.load(fh))\n+                data = json.load(fh)\n         except (OSError, ValueError) as err:\n             print(f\"skipping {p}: {err}\")\n+            continue\n+        if checker.valid_progress(data):\n+            records.append(data)\n+        else:\n+            print(f\"skipping {p}: not a progress record\")\n     return records\n \n \n",
+          "doc_diff": "--- a/tools/review.py\n+++ b/tools/review.py\n@@ -34,2 +34,4 @@\n             continue\n+        # Same shape rule as check.py, so a stray JSON file cannot crash aggregation.\n+        # (ref: DL-010)\n         if checker.valid_progress(data):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-008-003",
+          "version": 3,
+          "intent_ref": "CI-M-008-003",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -362,6 +362,28 @@\n     print(\"  local edits: not accepted as a pull\")\n \n \n+def malformed_progress_preserved(tmp):\n+    \"\"\"An unreadable progress file is reported and left alone, not replaced by\n+    an empty history; a normal save leaves no temp file behind.\"\"\"\n+    l = fresh_course(tmp, \"progress\")\n+    bad = os.path.join(l.root, \".learning\", \"progress.json\")\n+    l.write(\".learning/progress.json\", \"{not json\")\n+    r = subprocess.run([PY, \"tools/check.py\", \"00\"], cwd=l.root, capture_output=True, text=True)\n+    assert r.returncode == 2 and \"could not be read\" in r.stdout, r.stdout + r.stderr\n+    assert open(bad).read() == \"{not json\" and not os.path.exists(bad + \".tmp\"), \"bad progress file was touched\"\n+    os.remove(bad)\n+    l.check(\"00\", \"fail\")\n+    assert os.path.exists(bad) and not os.path.exists(bad + \".tmp\"), \"a save left a temp file or no file\"\n+    folder = os.path.join(tmp, \"progress-files\")\n+    os.makedirs(folder)\n+    shutil.copy(bad, os.path.join(folder, \"a.json\"))\n+    with open(os.path.join(folder, \"b.json\"), \"w\") as fh:\n+        fh.write(\"[]\")\n+    r = subprocess.run([PY, \"tools/review.py\", folder], cwd=l.root, capture_output=True, text=True)\n+    assert r.returncode == 0 and \"skipping\" in r.stdout and \"b.json\" in r.stdout, r.stdout + r.stderr\n+    print(\"  progress file: malformed one preserved, review skips bad shapes\")\n+\n+\n def scratch_recovery_as_written(tmp):\n     \"\"\"Lesson 04 Common Mistakes: a committed scratch file must be recoverable\n     by the steps the lesson gives, without losing the file.\"\"\"\n@@ -577,7 +599,8 @@\n                            bundled_32_recovery_as_written,\n                            fenced_profile_rejected,\n                            nested_example_fence_ok,\n-                           local_edits_not_pull):\n+                           local_edits_not_pull,\n+                           malformed_progress_preserved):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -364,2 +364,3 @@\n \n+# An unreadable progress file is evidence to keep, not state to overwrite. (ref: DL-010)\n def malformed_progress_preserved(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-008-004",
+          "version": 4,
+          "intent_ref": "CI-M-008-001",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -35,6 +35,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n   `origin/main` and contained in `main`; `07.remote.pushed` reports \"behind\"\n   and \"diverged\" separately. Lesson 07 Check Your Work says what the checker\n   can and cannot verify.\n+- `check.py` refuses to run on a progress file it cannot read (exit 2, file\n+  untouched) instead of replacing it with an empty history, and saves\n+  progress through a temporary file and `os.replace`. `review.py` skips\n+  files that are not progress records and says which.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -38,1 +38,1 @@\n - `check.py` refuses to run on a progress file it cannot read (exit 2, file\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-008-005",
+          "version": 4,
+          "intent_ref": "CI-M-008-001",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -72,6 +72,14 @@ Entry template:\n - Expected improvement: a learner who never pulled is sent to the clone, and the lesson does not claim more than the checker verifies.\n - Re-evaluate: yes — when lesson 07 progress data exists\n \n+## 2026-09-29 — Progress file is validated and written atomically\n+- Observed problem: `load_progress` treated malformed JSON like a missing file, so the next save replaced a learner's history with an empty record; the write was not atomic.\n+- Evidence: adversarial review finding F9: write invalid JSON to `.learning/progress.json`, run `check.py`, and it is replaced. `python tools/selftest.py` wall time at this commit: 15.0s.\n+- Hypothesis: A missing file means \"start fresh\"; a file that exists but cannot be trusted means \"stop and tell the learner\", because the file is the only copy of their history.\n+- Change made: `ProgressError` and a shared `valid_progress` predicate in `tools/check.py`; `main` prints the path, the reason and how to recover, and returns 2 without writing. `review.load` applies the same predicate. One selftest regression.\n+- Expected improvement: a damaged progress file is never silently destroyed; review does not aggregate garbage.\n+- Re-evaluate: no\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -81,1 +81,2 @@\n - Re-evaluate: no\n+- Decisions: DL-010 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    },
+    {
+      "id": "M-009",
+      "version": 2,
+      "number": 9,
+      "name": "F4 curriculum metrics only claim what data supports",
+      "files": [
+        "tools/check.py",
+        "tools/review.py",
+        "tools/selftest.py",
+        "README.md",
+        "CURRICULUM_REVIEW.md",
+        "CHANGELOG.md",
+        "CURRICULUM_CHANGELOG.md"
+      ],
+      "flags": [],
+      "requirements": [
+        "check.py all evaluates every lesson and writes no progress",
+        "a failing run on an already-completed lesson increments rechecks and leaves fails and failed_checks unchanged",
+        "first completion stores fails_before_pass",
+        "review.py removes trivial and abandoned signals and their table columns and SUGGESTIONS/classify entries",
+        "hard to pass uses fails_before_pass and ignores records lacking it",
+        "README says all checks every lesson without recording progress",
+        "CURRICULUM_REVIEW.md signal table drops the timestamp-derived rows",
+        "CURRICULUM_REVIEW.md scope extension is justified by DL-014"
+      ],
+      "acceptance_criteria": [
+        "check.py all on untouched course leaves .learning/progress.json absent",
+        "pass then three failing rechecks keeps fails_before_pass 0 and fails 0",
+        "review.py --selfcheck passes",
+        "review output contains no trivial or abandoned rows"
+      ],
+      "tests": [
+        "selftest regression all_is_read_only and rechecks_do_not_rewrite_first_pass"
+      ],
+      "code_intents": [
+        {
+          "id": "CI-M-009-001",
+          "version": 1,
+          "file": "tools/check.py",
+          "function": "main / run_lesson / record_run",
+          "behavior": "main: when target == 'all' evaluate every lesson with recording off and skip save_progress; run_lesson takes record=True and skips record_run and recommend_drills when False. record_run: if rec['completed'] was set before this run and it fails, increment rec['rechecks'] (via .get) and do not touch fails/failed_checks; on first completion set rec['fails_before_pass'] = rec['fails'].",
+          "decision_refs": [
+            "DL-011"
+          ]
+        },
+        {
+          "id": "CI-M-009-002",
+          "version": 1,
+          "file": "tools/review.py",
+          "function": "aggregate / _add_lesson / findings_for / render / SUGGESTIONS / classify_cause / selfcheck",
+          "behavior": "Drop 'abandoned' and 'trivial' from aggregate, _add_lesson, findings_for, render table, SUGGESTIONS ('trivial-pass', 'lesson-too-small' only if unreferenced after removal), classify_cause branches and selfcheck asserts. _add_lesson appends r['fails_before_pass'] + 1 to attempts_to_pass only when that key exists; seconds_between is deleted once unused. Rename table column 'Started' to 'Records' since presence is all it measures.",
+          "decision_refs": [
+            "DL-011"
+          ]
+        },
+        {
+          "id": "CI-M-009-003",
+          "version": 1,
+          "file": "README.md",
+          "function": null,
+          "behavior": "Line 'python tools/check.py all    # checks everything so far' reads '# checks every lesson; does not record progress'.",
+          "decision_refs": [
+            "DL-011"
+          ]
+        },
+        {
+          "id": "CI-M-009-004",
+          "version": 2,
+          "file": "CURRICULUM_REVIEW.md",
+          "function": null,
+          "behavior": "Remove the two timestamp-derived signal rows (abandoned; passed first attempt under a minute) and the trivial pass wording in the classification list and guidance; add one sentence that learning time and abandonment are not measured by the progress data.",
+          "decision_refs": [
+            "DL-011",
+            "DL-014"
+          ]
+        },
+        {
+          "id": "CI-M-009-005",
+          "version": 1,
+          "file": "tools/selftest.py",
+          "function": "all_is_read_only / rechecks_do_not_rewrite_first_pass",
+          "behavior": "all: fresh course, run check.py all (expect fail), assert .learning/progress.json does not exist. rechecks: fresh course, pass lesson 00, then break hello.md and run check 00 three times; load progress.json and assert fails_before_pass == 0, fails == 0, rechecks == 3. The final happy-path check('all', 'pass') stays.",
+          "decision_refs": [
+            "DL-002",
+            "DL-011"
+          ]
+        }
+      ],
+      "code_changes": [
+        {
+          "id": "CC-M-009-001",
+          "version": 2,
+          "intent_ref": "CI-M-009-001",
+          "file": "tools/check.py",
+          "diff": "diff --git a/tools/check.py b/tools/check.py\n--- a/tools/check.py\n+++ b/tools/check.py\n@@ -661,13 +661,17 @@ def record_run(data, lesson, failures):\n     rec = lesson_record(data, lesson)\n     rec[\"attempts\"] += 1\n     rec[\"last_run\"] = now()\n-    if failures:\n+    if failures and rec[\"completed\"]:\n+        rec[\"rechecks\"] = rec.get(\"rechecks\", 0) + 1  # a failure after the first pass is not friction learning it\n+    elif failures:\n         rec[\"fails\"] += 1\n         for f in failures:\n             rec[\"failed_checks\"][f.id] = rec[\"failed_checks\"].get(f.id, 0) + 1\n     else:\n         rec[\"passes\"] += 1\n-        rec[\"completed\"] = rec[\"completed\"] or now()\n+        if not rec[\"completed\"]:\n+            rec[\"completed\"] = now()\n+            rec[\"fails_before_pass\"] = rec[\"fails\"]\n     data[\"current_lesson\"] = next((l for l in lesson_ids()\n                                    if not data[\"lessons\"].get(l, {}).get(\"completed\")), \"09\")\n \n@@ -696,8 +700,9 @@ def warn_protected():\n         print(\"      Look: git diff <file>    Try: git restore <file> if you did not mean to edit it.\\n\")\n \n \n-def run_lesson(lesson, data):\n-    \"\"\"Run one lesson's checks, print educational output, record progress. Returns failures.\"\"\"\n+def run_lesson(lesson, data, record=True):\n+    \"\"\"Run one lesson's checks and print educational output; with record=True\n+    also update progress. Returns failures.\"\"\"\n     checks = [c for c in CHECKS if c.lesson == lesson]\n     print(f\"Lesson {lesson} — {lesson_title(lesson)}\")\n     failures, last_problem = [], None\n@@ -716,8 +721,9 @@ def run_lesson(lesson, data):\n         print(f\"        Look: {look}\")\n         print(f\"        Try:  {fix}\")\n     print(f\"  {len(checks) - len(failures)} of {len(checks)} checks passed.\")\n-    record_run(data, lesson, failures)\n-    recommend_drills(data, lesson, failures)\n+    if record:\n+        record_run(data, lesson, failures)\n+        recommend_drills(data, lesson, failures)\n     return failures\n \n \n@@ -750,13 +756,15 @@ def main(argv):\n         print(f\"Unknown lesson {target!r}. Use 00–09, 'all', or nothing for the current lesson.\")\n         return 2\n     warn_protected()\n+    record = target != \"all\"  # 'all' is a read-only overview; only a lesson run is evidence for that lesson\n     failed = 0\n     for lesson in lessons:\n-        failed += len(run_lesson(lesson, data))\n+        failed += len(run_lesson(lesson, data, record))\n         print()\n-    save_progress(data)\n+    if record:\n+        save_progress(data)\n     if failed == 0:\n-        print(next_step(data, lessons[-1]))\n+        print(next_step(data, lessons[-1]) if record else \"All checks passed for every lesson. Nothing was recorded.\")\n     return 1 if failed else 0\n \n \n",
+          "doc_diff": "--- a/tools/check.py\n+++ b/tools/check.py\n@@ -664,2 +664,5 @@\n     rec[\"last_run\"] = now()\n+    # The first pass freezes fails_before_pass. Later failures only count as rechecks,\n+    # so review.py measures friction of learning the lesson, not later regressions.\n+    # (ref: DL-011)\n     if failures and rec[\"completed\"]:\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-009-002",
+          "version": 3,
+          "intent_ref": "CI-M-009-002",
+          "file": "tools/review.py",
+          "diff": "diff --git a/tools/review.py b/tools/review.py\n--- a/tools/review.py\n+++ b/tools/review.py\n@@ -11,7 +11,7 @@ import glob\n import json\n import os\n import sys\n-from datetime import date, datetime\n+from datetime import date\n \n ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))\n sys.path.insert(0, os.path.join(ROOT, \"tools\"))\n@@ -41,26 +41,18 @@ def load(target):\n     return records\n \n \n-def seconds_between(a, b):\n-    try:\n-        return (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds()\n-    except (TypeError, ValueError):\n-        return None\n-\n-\n def aggregate(records):\n-    \"\"\"Per lesson: learners, completions, fails, hints, abandonments, trivial passes, failed check counts.\"\"\"\n-    agg = {l: {\"started\": 0, \"completed\": 0, \"fails\": 0, \"hints\": 0, \"abandoned\": 0,\n-               \"trivial\": 0, \"attempts_to_pass\": [], \"failed_checks\": {}} for l in LESSONS}\n+    \"\"\"Per lesson: records, completions, fails, hints, attempts to first pass, failed check counts.\"\"\"\n+    agg = {l: {\"started\": 0, \"completed\": 0, \"fails\": 0, \"hints\": 0,\n+               \"attempts_to_pass\": [], \"failed_checks\": {}} for l in LESSONS}\n     for rec in records:\n-        lessons = rec.get(\"lessons\", {})\n-        for lid, r in lessons.items():\n+        for lid, r in rec.get(\"lessons\", {}).items():\n             if lid in agg:\n-                _add_lesson(agg[lid], r, lid, lessons)\n+                _add_lesson(agg[lid], r)\n     return agg\n \n \n-def _add_lesson(a, r, lid, all_lessons):\n+def _add_lesson(a, r):\n     a[\"started\"] += 1\n     a[\"fails\"] += r.get(\"fails\", 0)\n     a[\"hints\"] += r.get(\"hints_used\", 0)\n@@ -68,12 +60,8 @@ def _add_lesson(a, r, lid, all_lessons):\n         a[\"failed_checks\"][cid] = a[\"failed_checks\"].get(cid, 0) + n\n     if r.get(\"completed\"):\n         a[\"completed\"] += 1\n-        a[\"attempts_to_pass\"].append(r.get(\"fails\", 0) + 1)\n-        elapsed = seconds_between(r.get(\"started\"), r.get(\"completed\", a))\n-        if r.get(\"fails\", 0) == 0 and elapsed is not None and elapsed < 60:\n-            a[\"trivial\"] += 1\n-    elif any(l > lid for l in all_lessons):\n-        a[\"abandoned\"] += 1\n+        if \"fails_before_pass\" in r:  # records without it are unknown, not guessed\n+            a[\"attempts_to_pass\"].append(r[\"fails_before_pass\"] + 1)\n \n \n def findings_for(lid, a, prev):\n@@ -82,14 +70,10 @@ def findings_for(lid, a, prev):\n     mean_attempts = sum(a[\"attempts_to_pass\"]) / len(a[\"attempts_to_pass\"]) if a[\"attempts_to_pass\"] else 0\n     if mean_attempts >= 3:\n         out.append(finding(lid, \"high\", \"hard to pass\", f\"mean {mean_attempts:.1f} check runs before first pass\", a))\n-    if a[\"abandoned\"]:\n-        out.append(finding(lid, \"high\", \"abandoned\", f\"{a['abandoned']} of {a['started']} moved on without passing\", a))\n     if a[\"hints\"] / n >= 2:\n         out.append(finding(lid, \"medium\", \"hints needed\", f\"{a['hints']} hints across {a['started']} learner(s)\", a))\n     if prev is not None and a[\"fails\"] >= 3 and a[\"fails\"] >= 2 * max(prev[\"fails\"], 1):\n         out.append(finding(lid, \"medium\", \"difficulty jump\", f\"{a['fails']} fails vs {prev['fails']} in the previous lesson\", a))\n-    if a[\"trivial\"] and a[\"trivial\"] == a[\"completed\"]:\n-        out.append(finding(lid, \"low\", \"trivial pass\", f\"all {a['completed']} completion(s) passed first try in under a minute\", a))\n     out += concept_findings(lid, a, n)\n     return out\n \n@@ -125,7 +109,6 @@ SUGGESTIONS = {\n     \"concept-out-of-order\": \"Move the concept to an earlier lesson or add a reinforcement drill before it is needed.\",\n     \"lesson-too-big\": \"Split into two exercises with a check after each.\",\n     \"lesson-too-small\": \"Merge with a neighbour or add an optional challenge that demands understanding.\",\n-    \"trivial-pass\": \"Add a check that requires a decision, not just a file's existence.\",\n     \"unclassified\": \"Read the lesson as a beginner and decide which rubric category applies.\",\n }\n \n@@ -141,8 +124,6 @@ def classify_cause(f):\n     always a human's, recorded in CURRICULUM_CHANGELOG.md.\n     \"\"\"\n     signal, lesson, hints = f[\"signal\"], f[\"lesson\"], f[\"hints\"]\n-    if signal == \"trivial pass\":\n-        return \"trivial-pass\"\n     if signal == \"hints needed\":\n         return \"unclear-wording\"\n     if signal == \"concept not landing\":\n@@ -155,10 +136,6 @@ def classify_cause(f):\n     if signal == \"difficulty jump\":\n         # A lesson doing many things is more likely oversized than misordered.\n         return \"lesson-too-big\" if CHECK_COUNT.get(lesson, 0) >= BIG_LESSON else \"concept-out-of-order\"\n-    if signal == \"abandoned\":\n-        # Abandoned after asking for help reads as too much lesson at once;\n-        # abandoned in silence could be anything, including life.\n-        return \"lesson-too-big\" if hints else \"unclassified\"\n     return \"unclassified\"\n \n \n@@ -183,10 +160,10 @@ def render(findings, agg, sources):\n         lines += [f\"### Lesson {f['lesson']} — {f['signal']} ({f['severity']})\", \"\",\n                   f\"- Evidence: {f['evidence']}\", f\"- Likely cause: {f['cause']}\",\n                   f\"- Suggested change: {f['suggestion']}\", \"\"]\n-    lines += [\"## Per-lesson signals\", \"\", \"| Lesson | Started | Completed | Fails | Hints | Abandoned | Trivial |\",\n-              \"|--------|---------|-----------|-------|-------|-----------|---------|\"]\n+    lines += [\"## Per-lesson signals\", \"\", \"| Lesson | Records | Completed | Fails | Hints |\",\n+              \"|--------|---------|-----------|-------|-------|\"]\n     for lid, a in agg.items():\n-        lines.append(f\"| {lid} | {a['started']} | {a['completed']} | {a['fails']} | {a['hints']} | {a['abandoned']} | {a['trivial']} |\")\n+        lines.append(f\"| {lid} | {a['started']} | {a['completed']} | {a['fails']} | {a['hints']} |\")\n     lines += [\"\", \"Next: classify each finding, apply the smallest change, run validate_curriculum.py and selftest.py,\",\n               \"then record it in CURRICULUM_CHANGELOG.md.\"]\n     return \"\\n\".join(lines) + \"\\n\"\n@@ -197,12 +174,9 @@ def selfcheck():\n     def f(signal, lesson=\"03\", hints=0, concept=None):\n         return classify_cause({\"signal\": signal, \"lesson\": lesson, \"hints\": hints, \"concept\": concept})\n \n-    assert f(\"trivial pass\") == \"trivial-pass\"\n     assert f(\"hints needed\") == \"unclear-wording\"\n     assert f(\"hard to pass\", hints=0) == \"check-too-strict\"\n     assert f(\"hard to pass\", hints=4) == \"unclear-wording\"\n-    assert f(\"abandoned\", hints=3) == \"lesson-too-big\"\n-    assert f(\"abandoned\", hints=0) == \"unclassified\"\n     # 'commit' is introduced in lesson 03, so failing there is a teaching problem...\n     assert f(\"concept not landing\", lesson=\"03\", concept=\"commit\") == \"unclear-wording\"\n     # ...and failing in a later lesson means it never stuck.\n@@ -212,8 +186,8 @@ def selfcheck():\n     assert f(\"difficulty jump\", lesson=\"00\") == \"concept-out-of-order\"  # 2 checks\n     assert f(\"something new\") == \"unclassified\"\n     assert set(SUGGESTIONS) >= {f(s, hints=h, concept=c)\n-                                for s in (\"trivial pass\", \"hints needed\", \"hard to pass\",\n-                                          \"abandoned\", \"difficulty jump\", \"concept not landing\")\n+                                for s in (\"hints needed\", \"hard to pass\",\n+                                          \"difficulty jump\", \"concept not landing\")\n                                 for h in (0, 5) for c in (None, \"commit\")}, \"a rule returned an unknown key\"\n     print(\"classify_cause: all rules behave as documented\")\n \n",
+          "doc_diff": "--- a/tools/review.py\n+++ b/tools/review.py\n@@ -52,4 +52,6 @@\n     return agg\n \n \n+# started/completed timestamps cannot measure learning time and a missing later record\n+# cannot prove abandonment, so neither is reported. (ref: DL-011)\n def _add_lesson(a, r):\n",
+          "comments": "Apply changes in order within the milestone; diffs were generated from a sequential scratch copy and tools/selftest.py plus validate_curriculum.py passed after each milestone. lesson-too-small is kept in SUGGESTIONS because CURRICULUM_REVIEW.md still lists it as a human classification; only trivial-pass was removed. "
+        },
+        {
+          "id": "CC-M-009-003",
+          "version": 3,
+          "intent_ref": "CI-M-009-003",
+          "file": "README.md",
+          "diff": "diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -57,7 +57,7 @@ From the repository's top folder:\n ```text\n python tools/check.py        # checks the lesson you are currently on\n python tools/check.py 03     # checks lesson 03\n-python tools/check.py all    # checks everything so far\n+python tools/check.py all    # checks every lesson; does not record progress\n ```\n \n On some systems the command is `python3` instead of `python`.\n",
+          "doc_diff": "--- a/README.md\n+++ b/README.md\n@@ -61,1 +61,1 @@\n python tools/check.py all    # checks every lesson; does not record progress\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-009-004",
+          "version": 3,
+          "intent_ref": "CI-M-009-004",
+          "file": "CURRICULUM_REVIEW.md",
+          "diff": "diff --git a/CURRICULUM_REVIEW.md b/CURRICULUM_REVIEW.md\n--- a/CURRICULUM_REVIEW.md\n+++ b/CURRICULUM_REVIEW.md\n@@ -15,13 +15,16 @@ check failed. Nothing about the person is stored.\n \n | Signal | Derived from | What it usually means |\n |--------|--------------|-----------------------|\n-| High fail count before first pass | `attempts` at first pass | Instructions unclear, or check too strict |\n+| High fail count before first pass | `fails_before_pass` | Instructions unclear, or check too strict |\n | Same check failing repeatedly | `failed_checks[id]` | The concept behind that check is not landing |\n | Hints requested | `hints_used` | Lesson text alone is insufficient |\n-| Started, never completed, then a later lesson started | timestamps | Learner abandoned it; possible difficulty cliff or check bug |\n-| Passed on first attempt in under a minute | timestamps | Possibly trivial; may not demonstrate understanding |\n | Fail spike in lesson N after clean N-1 | attempts across lessons | Difficulty jump or missing prerequisite |\n \n+The progress data does not measure learning time or abandonment: its\n+timestamps show when the checker ran, not how long anyone worked or whether\n+they gave up. Read a check that everyone passes at once by reading the check,\n+not from these numbers.\n+\n Run it:\n \n ```text\n@@ -67,7 +70,7 @@ Evaluate each lesson against these. Record findings as\n 2. **Identify** — `python tools/review.py <folder>`. Read the findings.\n 3. **Classify** — for each finding, decide the likely cause:\n    unclear wording / missing prerequisite / check too strict / check buggy /\n-   concept out of order / lesson too big / lesson too small / trivial pass.\n+   concept out of order / lesson too big / lesson too small.\n 4. **Propose** — write the smallest change that addresses the cause.\n 5. **Apply** — edit the lesson and/or `tools/check.py`. Keep it to one\n    concern.\n@@ -80,7 +83,7 @@ Evaluate each lesson against these. Record findings as\n ## Guardrails\n \n - Never optimise for completion rate alone. A check that everyone passes\n-  instantly is a finding (\"trivial pass\"), not a win.\n+  instantly is a finding, not a win.\n - Never change the lesson a learner is currently on (`current_lesson` in\n   their progress file) in a way that invalidates their in-progress work.\n - Changes are ordinary Git commits: reviewable, revertable.\n",
+          "doc_diff": "--- a/CURRICULUM_REVIEW.md\n+++ b/CURRICULUM_REVIEW.md\n@@ -19,1 +19,1 @@\n | High fail count before first pass | `fails_before_pass` | Instructions unclear, or check too strict |\n",
+          "comments": "(ref: DL-014) doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-009-005",
+          "version": 3,
+          "intent_ref": "CI-M-009-005",
+          "file": "tools/selftest.py",
+          "diff": "diff --git a/tools/selftest.py b/tools/selftest.py\n--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -7,6 +7,7 @@\n each lesson's exercise the way the instructions say. After each lesson it\n asserts that check.py fails before the work is done and passes after.\n \"\"\"\n+import json\n import os\n import shutil\n import subprocess\n@@ -384,6 +385,28 @@\n     print(\"  progress file: malformed one preserved, review skips bad shapes\")\n \n \n+def all_is_read_only(tmp):\n+    \"\"\"check.py all is an overview: it must not write progress.\"\"\"\n+    l = fresh_course(tmp, \"all-readonly\")\n+    l.check(\"all\", \"fail\")\n+    assert not os.path.exists(os.path.join(l.root, \".learning\", \"progress.json\")), \"'all' wrote progress\"\n+    print(\"  check all: writes no progress\")\n+\n+\n+def rechecks_do_not_rewrite_first_pass(tmp):\n+    \"\"\"Failing after the first pass is a recheck, not more friction learning the lesson.\"\"\"\n+    l = fresh_course(tmp, \"rechecks\")\n+    l.write(\"workspace/hello.md\", \"# Hello\\n\")\n+    l.check(\"00\", \"pass\")\n+    l.write(\"workspace/hello.md\", \"no heading\\n\")\n+    for _ in range(3):\n+        l.check(\"00\", \"fail\")\n+    with open(os.path.join(l.root, \".learning\", \"progress.json\"), encoding=\"utf-8\") as fh:\n+        rec = json.load(fh)[\"lessons\"][\"00\"]\n+    assert (rec[\"fails_before_pass\"], rec[\"fails\"], rec[\"rechecks\"]) == (0, 0, 3), rec\n+    print(\"  rechecks: first pass stays frozen\")\n+\n+\n def scratch_recovery_as_written(tmp):\n     \"\"\"Lesson 04 Common Mistakes: a committed scratch file must be recoverable\n     by the steps the lesson gives, without losing the file.\"\"\"\n@@ -600,7 +623,9 @@\n                            fenced_profile_rejected,\n                            nested_example_fence_ok,\n                            local_edits_not_pull,\n-                           malformed_progress_preserved):\n+                           malformed_progress_preserved,\n+                           all_is_read_only,\n+                           rechecks_do_not_rewrite_first_pass):\n             regression(tmp)\n         r = subprocess.run([PY, \"tools/review.py\", \"--selfcheck\"], cwd=l.root, capture_output=True, text=True)\n         assert r.returncode == 0, r.stdout + r.stderr\n",
+          "doc_diff": "--- a/tools/selftest.py\n+++ b/tools/selftest.py\n@@ -387,2 +387,3 @@\n \n+# 'all' is an overview; only a lesson run is evidence for that lesson. (ref: DL-011)\n def all_is_read_only(tmp):\n",
+          "comments": ""
+        },
+        {
+          "id": "CC-M-009-006",
+          "version": 4,
+          "intent_ref": "CI-M-009-001",
+          "file": "CHANGELOG.md",
+          "diff": "diff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -39,6 +39,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n   untouched) instead of replacing it with an empty history, and saves\n   progress through a temporary file and `os.replace`. `review.py` skips\n   files that are not progress records and says which.\n+- `check.py all` no longer records progress. A failing run after a lesson\n+  is complete counts as a recheck and leaves `fails` and `failed_checks`\n+  alone; the first completion stores `fails_before_pass`.\n+- `review.py` no longer reports \"abandoned\" or \"trivial pass\", which were\n+  derived from timestamps that only show when the checker ran. \"Hard to pass\"\n+  uses `fails_before_pass` and ignores records that lack it.\n \n ### Added\n \n",
+          "doc_diff": "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -42,1 +42,1 @@\n - `check.py all` no longer records progress. A failing run after a lesson\n",
+          "comments": "doc_diff is intentionally context-only: the diff field is the complete documentation change for this markdown file; no further comment is added."
+        },
+        {
+          "id": "CC-M-009-007",
+          "version": 4,
+          "intent_ref": "CI-M-009-001",
+          "file": "CURRICULUM_CHANGELOG.md",
+          "diff": "diff --git a/CURRICULUM_CHANGELOG.md b/CURRICULUM_CHANGELOG.md\n--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -80,6 +80,14 @@ Entry template:\n - Expected improvement: a damaged progress file is never silently destroyed; review does not aggregate garbage.\n - Re-evaluate: no\n \n+## 2026-09-29 — Curriculum metrics only claim what the data supports\n+- Observed problem: `review.py` inferred abandonment from a later lesson having a record and triviality from a sub-minute gap between two check runs; neither is measured. `check.py all` recorded every lesson as started, and failures after a pass raised `fails`, so both distorted \"hard to pass\" and \"difficulty jump\".\n+- Evidence: adversarial review finding F4: running `check.py all` on an untouched course created a record for every lesson; three failing rechecks after a pass changed `fails` from 0 to 3. `python tools/selftest.py` wall time at this commit: 15.9s.\n+- Hypothesis: Deleting signals the data cannot support is smaller and more honest than a new schema version; additive keys read with `.get` keep existing files valid.\n+- Change made: `check.py all` is read-only; `record_run` counts rechecks separately and freezes `fails_before_pass`; `review.py` drops the two signals, their table columns and classification branches, and renames the Started column to Records. README and CURRICULUM_REVIEW.md describe what is and is not measured (CURRICULUM_REVIEW.md is outside the original file list because its signal table documented the removed signals). Two selftest regressions.\n+- Expected improvement: a maintainer is only pointed at lessons by evidence the tool actually has; a learner running `all` does not change their own record.\n+- Re-evaluate: yes — when real progress files exist, to see whether \"hard to pass\" alone is enough\n+\n ## 2026-09-28 — Three faults found by hand-walking lessons 04–09\n \n - Observed problem: (1) a learner who completed lesson 03 and only then ran\n",
+          "doc_diff": "--- a/CURRICULUM_CHANGELOG.md\n+++ b/CURRICULUM_CHANGELOG.md\n@@ -89,1 +89,2 @@\n - Re-evaluate: yes — when real progress files exist, to see whether \"hard to pass\" alone is enough\n+- Decisions: DL-011, DL-012 in tools/README.md.\n",
+          "comments": ""
+        }
+      ],
+      "documentation": {
+        "module_comment": null,
+        "docstrings": [],
+        "function_blocks": [],
+        "inline_comments": []
+      },
+      "is_documentation_only": false,
+      "delegated_to": null
+    }
+  ],
+  "waves": [
+    {
+      "id": "W-001",
+      "milestones": [
+        "M-001"
+      ]
+    },
+    {
+      "id": "W-002",
+      "milestones": [
+        "M-002"
+      ]
+    },
+    {
+      "id": "W-003",
+      "milestones": [
+        "M-003"
+      ]
+    },
+    {
+      "id": "W-004",
+      "milestones": [
+        "M-004"
+      ]
+    },
+    {
+      "id": "W-005",
+      "milestones": [
+        "M-005"
+      ]
+    },
+    {
+      "id": "W-006",
+      "milestones": [
+        "M-006"
+      ]
+    },
+    {
+      "id": "W-007",
+      "milestones": [
+        "M-007"
+      ]
+    },
+    {
+      "id": "W-008",
+      "milestones": [
+        "M-008"
+      ]
+    },
+    {
+      "id": "W-009",
+      "milestones": [
+        "M-009"
+      ]
+    }
+  ],
+  "diagram_graphs": [],
+  "readme_entries": [
+    {
+      "path": "tools",
+      "content": "# tools/\n\nChecker, selftest, review, and helper scripts. Python standard library only.\n\n## Invariants\n\n- A false green is worse than a false red. A learner reads a passing check\n  as \"move on\", so a check that passes without the promised work misleads\n  more than one that is too strict.\n- Checks assert final state; lessons promise process. Tighten a check where\n  Git history carries evidence of the process (per-path commits, both merge\n  parents). Where history cannot carry it (for example, that a pull\n  happened), the lesson labels the step as learner-verified instead of the\n  check pretending to prove it.\n- `review.py` findings drive curriculum edits. A metric the progress data\n  does not support (learning time, abandonment) sends maintainers to rewrite\n  the wrong lesson, so unsupported signals are not reported.\n- Helpers that touch a learner's repository report state and stop on the\n  first Git failure. They never reset, restore, or discard learner work.\n- `tools/selftest.py` holds one regression per checker or helper defect,\n  each building its own temporary course. A nonzero exit other than 1 from\n  `check.py` is a harness error, not an expected exercise failure.\n\n## Decision log\n\nCode comments in `tools/*.py` and entries in `../CURRICULUM_CHANGELOG.md`\ncite these IDs as `DL-nnn`.\n\n### DL-002\n\nRegression vehicle is selftest.py: one named function per finding that builds its own temporary course and asserts the specific check id outcome.\n\nReasoning: stdlib-only rule excludes pytest -> the shared happy-path Learner accumulates state so a negative case mid-walk would corrupt later lessons -> each regression gets a fresh setup(tmp) fixture and asserts on the check id line in stdout, not only the exit code.\n\n### DL-003\n\nLearner.check treats exit 1 as exercise failure and any other nonzero exit as a harness error.\n\nReasoning: check.py returns 2 for usage/operational errors and a traceback exits 1 only via uncaught exception text on stderr -> a crash currently reads as an expected fail -> regressions asserting fail would pass on a crash -> require returncode in (0,1) and empty stderr traceback before comparing.\n\n### DL-004\n\nsetup_conflict.py refuses unless the index and all tracked files are clean (untracked files allowed); every git call is checked and the first failure stops with stderr and an inspect/recover hint; success is printed only after verifying branch tip content and that HEAD is back on main.\n\nReasoning: plain git commit takes the whole index (F1) -> path-scoped preflight is insufficient -> a whole-tree porcelain check excluding ?? lines is the smallest correct gate; ignored return codes produced false success (F2) -> fail-fast with no rollback keeps learner work untouched as the review requires.\n\n### DL-005\n\nmerge_touching(path, both_sides=True) selects learner merge commits where the path differs from the merge base on both parents; Lesson 09 keeps the first-parent test.\n\nReasoning: a conflict exists only when both sides changed the path -> keeping main side leaves h^1 == h on that path so the first-parent test rejects a valid resolution (F3) -> comparing h^1 with h^2 is non-empty when only one side changed the path, so a conflict-free --no-ff merge would pass 06.merge.commit -> requiring base..h^1 and base..h^2 both non-empty holds for ours, theirs and combined and rejects one-sided merges -> the capstone merge changes CAP on the branch side only, so 09.merge.branch keeps the first-parent test via the default both_sides=False.\n\n### DL-006\n\nLesson 04 scratch recovery teaches git rm --cached workspace/scratch.md then a commit; the checker rule is unchanged.\n\nReasoning: delete-and-commit leaves the file missing so 04.scratch.untracked can never pass (F8) -> rm --cached removes it from tracking while keeping the file on disk -> the literal steps reach exists+untracked+unstaged without destroying learner content and without loosening the check.\n\n### DL-007\n\nSeparate-commit checks count learner commits that touch the target path and none of the sibling exercise paths; lesson 04 Exercise 4.1 Recovery is reworded so a bundled commit can still reach the checked state.\n\nReasoning: total-count check passes one bundled commit plus unrelated commits (F6) -> per-path exclusive commits encode one thing per commit directly -> git log -- path already drops empty commits and unrelated paths -> Lesson 03 needs one exclusive commit each for hello/profile/notes; Lesson 04 needs two exclusive commits each for profile.md and notes/README.md relative to each other -> current 4.1 Recovery (Committed both together? do the next exercise commits separately) leaves only one exclusive commit per file (lesson 04 has only Exercises 4.1-4.3, none adding more), so 04.commits.two-more could never pass; likewise 3.2 Recovery (committed both together is acceptable, move on) leaves 03.commit.separate unpassable -> both Recovery texts must tell the learner to make one further small edit to each file and commit each on its own.\n\n### DL-008\n\nMarkdown structural checks run over prose with top-level fenced blocks removed and inline code spans blanked; code-block checks run over the extracted top-level fences; backtick and tilde fences and unclosed fences follow CommonMark; indented (4-space) code blocks are outside the taught subset and not treated as code.\n\nReasoning: regexes over raw text count a fenced example as rendered structure (F7) -> a line scanner that tracks fence char (backtick or tilde) and length (CommonMark closing rule: same char and >= opening length) handles nested four-backtick examples in ~20 stdlib lines -> CommonMark runs an unclosed fence to end of document, so the scanner treats everything after an unclosed opener as code (no false green from a forgotten closer) -> lessons teach only fenced code blocks, and indented-block detection needs list/paragraph context the scanner does not model, so indented blocks are explicitly excluded (their text counts as prose; accepted false-red risk, consistent with false red over false green) -> no parser dependency needed -> inline code blanked so backticked **x** is not bold.\n\n### DL-009\n\nLesson 07 checks are stateless: pushed = origin/main exists and is an ancestor of main with distinct ahead/behind/diverged messages; pulled = origin/main carries at least two learner commits touching reading-list.md and main contains origin/main.\n\nReasoning: requiring main == origin/main would fail after Lessons 08-09 advance main and would need progress coupling -> requiring the second reading-list commit to be on origin/main rejects unpushed local edits (F5 repro) while surviving later lessons -> which clone authored a commit is unprovable from history -> lesson text labels provenance as learner self-verification.\n\n### DL-010\n\nload_progress distinguishes missing (default record) from unreadable/malformed/wrong-shape (print path + reason + recovery; main returns 2 without writing); save_progress writes a sibling temp file then os.replace.\n\nReasoning: malformed JSON is silently replaced by empty history on next save (F9) -> refusing to proceed preserves the file for recovery -> same-directory temp + os.replace is atomic on POSIX and Windows -> review.load applies the same shape validation and skips bad records with a named reason.\n\n### DL-011\n\nMetrics fix without schema version: check.py all is read-only; failing runs after completion increment rechecks only; first completion freezes fails_before_pass; review.py drops trivial and abandoned signals and computes hard-to-pass only from fails_before_pass.\n\nReasoning: started/completed timestamps cannot measure learning time and record presence cannot prove abandonment (F4) -> deleting the unsupported signals is smaller and more honest than a v2 schema -> additive keys read with .get keep v1 files valid -> records lacking fails_before_pass are excluded from attempts, i.e. unknown rather than guessed.\n\n### DL-012\n\nNo selftest runtime threshold is set; each milestone commit records the measured python tools/selftest.py wall time in its CURRICULUM_CHANGELOG.md evidence line, and runtime work is deferred unless a maintainer reports it as a problem.\n\nReasoning: no user instruction or project doc sets a runtime budget and docs/error-remediation-plan.md defers runtime optimization -> inventing a ~60s threshold would be an unbacked policy default -> fresh fixtures accumulate across M-002..M-009, so a single M-001 measurement is only a baseline -> recording the measured time at every milestone makes growth visible without a threshold.\n\n### DL-014\n\nCURRICULUM_REVIEW.md is added to the scope of M-009 to remove the timestamp-derived signal rows.\n\nReasoning: CURRICULUM_REVIEW.md documents the trivial/abandoned signals that DL-011 deletes from review.py -> leaving them would describe metrics the tool no longer produces and steer maintainers to rewrite lessons from non-existent data -> CONTRIBUTING.md requires checks and their docs to change together -> the task_spec scope list omitted this file only because it was not in the adversarial-review entry points, so extending scope by one doc file is the minimal consistent fix."
+    }
+  ]
+}

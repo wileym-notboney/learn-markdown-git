@@ -11,7 +11,7 @@ import glob
 import json
 import os
 import sys
-from datetime import date, datetime
+from datetime import date
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -30,32 +30,33 @@ def load(target):
     for p in paths:
         try:
             with open(p, encoding="utf-8") as fh:
-                records.append(json.load(fh))
+                data = json.load(fh)
         except (OSError, ValueError) as err:
             print(f"skipping {p}: {err}")
+            continue
+        # Same shape rule as check.py, so a stray JSON file cannot crash aggregation.
+        # (ref: DL-010)
+        if checker.valid_progress(data):
+            records.append(data)
+        else:
+            print(f"skipping {p}: not a progress record")
     return records
 
 
-def seconds_between(a, b):
-    try:
-        return (datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds()
-    except (TypeError, ValueError):
-        return None
-
-
 def aggregate(records):
-    """Per lesson: learners, completions, fails, hints, abandonments, trivial passes, failed check counts."""
-    agg = {l: {"started": 0, "completed": 0, "fails": 0, "hints": 0, "abandoned": 0,
-               "trivial": 0, "attempts_to_pass": [], "failed_checks": {}} for l in LESSONS}
+    """Per lesson: records, completions, fails, hints, attempts to first pass, failed check counts."""
+    agg = {l: {"started": 0, "completed": 0, "fails": 0, "hints": 0,
+               "attempts_to_pass": [], "failed_checks": {}} for l in LESSONS}
     for rec in records:
-        lessons = rec.get("lessons", {})
-        for lid, r in lessons.items():
+        for lid, r in rec.get("lessons", {}).items():
             if lid in agg:
-                _add_lesson(agg[lid], r, lid, lessons)
+                _add_lesson(agg[lid], r)
     return agg
 
 
-def _add_lesson(a, r, lid, all_lessons):
+# started/completed timestamps cannot measure learning time and a missing later record
+# cannot prove abandonment, so neither is reported. (ref: DL-011)
+def _add_lesson(a, r):
     a["started"] += 1
     a["fails"] += r.get("fails", 0)
     a["hints"] += r.get("hints_used", 0)
@@ -63,12 +64,8 @@ def _add_lesson(a, r, lid, all_lessons):
         a["failed_checks"][cid] = a["failed_checks"].get(cid, 0) + n
     if r.get("completed"):
         a["completed"] += 1
-        a["attempts_to_pass"].append(r.get("fails", 0) + 1)
-        elapsed = seconds_between(r.get("started"), r.get("completed", a))
-        if r.get("fails", 0) == 0 and elapsed is not None and elapsed < 60:
-            a["trivial"] += 1
-    elif any(l > lid for l in all_lessons):
-        a["abandoned"] += 1
+        if "fails_before_pass" in r:  # records without it are unknown, not guessed
+            a["attempts_to_pass"].append(r["fails_before_pass"] + 1)
 
 
 def findings_for(lid, a, prev):
@@ -77,14 +74,10 @@ def findings_for(lid, a, prev):
     mean_attempts = sum(a["attempts_to_pass"]) / len(a["attempts_to_pass"]) if a["attempts_to_pass"] else 0
     if mean_attempts >= 3:
         out.append(finding(lid, "high", "hard to pass", f"mean {mean_attempts:.1f} check runs before first pass", a))
-    if a["abandoned"]:
-        out.append(finding(lid, "high", "abandoned", f"{a['abandoned']} of {a['started']} moved on without passing", a))
     if a["hints"] / n >= 2:
         out.append(finding(lid, "medium", "hints needed", f"{a['hints']} hints across {a['started']} learner(s)", a))
     if prev is not None and a["fails"] >= 3 and a["fails"] >= 2 * max(prev["fails"], 1):
         out.append(finding(lid, "medium", "difficulty jump", f"{a['fails']} fails vs {prev['fails']} in the previous lesson", a))
-    if a["trivial"] and a["trivial"] == a["completed"]:
-        out.append(finding(lid, "low", "trivial pass", f"all {a['completed']} completion(s) passed first try in under a minute", a))
     out += concept_findings(lid, a, n)
     return out
 
@@ -120,7 +113,6 @@ SUGGESTIONS = {
     "concept-out-of-order": "Move the concept to an earlier lesson or add a reinforcement drill before it is needed.",
     "lesson-too-big": "Split into two exercises with a check after each.",
     "lesson-too-small": "Merge with a neighbour or add an optional challenge that demands understanding.",
-    "trivial-pass": "Add a check that requires a decision, not just a file's existence.",
     "unclassified": "Read the lesson as a beginner and decide which rubric category applies.",
 }
 
@@ -136,8 +128,6 @@ def classify_cause(f):
     always a human's, recorded in CURRICULUM_CHANGELOG.md.
     """
     signal, lesson, hints = f["signal"], f["lesson"], f["hints"]
-    if signal == "trivial pass":
-        return "trivial-pass"
     if signal == "hints needed":
         return "unclear-wording"
     if signal == "concept not landing":
@@ -150,10 +140,6 @@ def classify_cause(f):
     if signal == "difficulty jump":
         # A lesson doing many things is more likely oversized than misordered.
         return "lesson-too-big" if CHECK_COUNT.get(lesson, 0) >= BIG_LESSON else "concept-out-of-order"
-    if signal == "abandoned":
-        # Abandoned after asking for help reads as too much lesson at once;
-        # abandoned in silence could be anything, including life.
-        return "lesson-too-big" if hints else "unclassified"
     return "unclassified"
 
 
@@ -178,10 +164,10 @@ def render(findings, agg, sources):
         lines += [f"### Lesson {f['lesson']} — {f['signal']} ({f['severity']})", "",
                   f"- Evidence: {f['evidence']}", f"- Likely cause: {f['cause']}",
                   f"- Suggested change: {f['suggestion']}", ""]
-    lines += ["## Per-lesson signals", "", "| Lesson | Started | Completed | Fails | Hints | Abandoned | Trivial |",
-              "|--------|---------|-----------|-------|-------|-----------|---------|"]
+    lines += ["## Per-lesson signals", "", "| Lesson | Records | Completed | Fails | Hints |",
+              "|--------|---------|-----------|-------|-------|"]
     for lid, a in agg.items():
-        lines.append(f"| {lid} | {a['started']} | {a['completed']} | {a['fails']} | {a['hints']} | {a['abandoned']} | {a['trivial']} |")
+        lines.append(f"| {lid} | {a['started']} | {a['completed']} | {a['fails']} | {a['hints']} |")
     lines += ["", "Next: classify each finding, apply the smallest change, run validate_curriculum.py and selftest.py,",
               "then record it in CURRICULUM_CHANGELOG.md."]
     return "\n".join(lines) + "\n"
@@ -192,12 +178,9 @@ def selfcheck():
     def f(signal, lesson="03", hints=0, concept=None):
         return classify_cause({"signal": signal, "lesson": lesson, "hints": hints, "concept": concept})
 
-    assert f("trivial pass") == "trivial-pass"
     assert f("hints needed") == "unclear-wording"
     assert f("hard to pass", hints=0) == "check-too-strict"
     assert f("hard to pass", hints=4) == "unclear-wording"
-    assert f("abandoned", hints=3) == "lesson-too-big"
-    assert f("abandoned", hints=0) == "unclassified"
     # 'commit' is introduced in lesson 03, so failing there is a teaching problem...
     assert f("concept not landing", lesson="03", concept="commit") == "unclear-wording"
     # ...and failing in a later lesson means it never stuck.
@@ -207,8 +190,8 @@ def selfcheck():
     assert f("difficulty jump", lesson="00") == "concept-out-of-order"  # 2 checks
     assert f("something new") == "unclassified"
     assert set(SUGGESTIONS) >= {f(s, hints=h, concept=c)
-                                for s in ("trivial pass", "hints needed", "hard to pass",
-                                          "abandoned", "difficulty jump", "concept not landing")
+                                for s in ("hints needed", "hard to pass",
+                                          "difficulty jump", "concept not landing")
                                 for h in (0, 5) for c in (None, "commit")}, "a rule returned an unknown key"
     print("classify_cause: all rules behave as documented")
 

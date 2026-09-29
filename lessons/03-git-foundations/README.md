@@ -339,8 +339,10 @@ python tools/check.py 03
 - If you accidentally staged both files together, `git restore --staged
   workspace/notes` unstages the folder (Lesson 04 explains this command);
   then commit the profile alone.
-- If you committed both together, that is acceptable. Note it in your
-  reflection and move on; splitting commits is an advanced topic.
+- If you committed both together, make one more small edit to `profile.md`
+  and commit it on its own, then one more small edit inside `notes/` and
+  commit that on its own, so each has a commit of its own when you run the
+  check.
 
 ### Reflection
 

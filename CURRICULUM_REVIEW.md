@@ -15,12 +15,15 @@ check failed. Nothing about the person is stored.
 
 | Signal | Derived from | What it usually means |
 |--------|--------------|-----------------------|
-| High fail count before first pass | `attempts` at first pass | Instructions unclear, or check too strict |
+| High fail count before first pass | `fails_before_pass` | Instructions unclear, or check too strict |
 | Same check failing repeatedly | `failed_checks[id]` | The concept behind that check is not landing |
 | Hints requested | `hints_used` | Lesson text alone is insufficient |
-| Started, never completed, then a later lesson started | timestamps | Learner abandoned it; possible difficulty cliff or check bug |
-| Passed on first attempt in under a minute | timestamps | Possibly trivial; may not demonstrate understanding |
 | Fail spike in lesson N after clean N-1 | attempts across lessons | Difficulty jump or missing prerequisite |
+
+The progress data does not measure learning time or abandonment: its
+timestamps show when the checker ran, not how long anyone worked or whether
+they gave up. Read a check that everyone passes at once by reading the check,
+not from these numbers.
 
 Run it:
 
@@ -67,7 +70,7 @@ Evaluate each lesson against these. Record findings as
 2. **Identify** — `python tools/review.py <folder>`. Read the findings.
 3. **Classify** — for each finding, decide the likely cause:
    unclear wording / missing prerequisite / check too strict / check buggy /
-   concept out of order / lesson too big / lesson too small / trivial pass.
+   concept out of order / lesson too big / lesson too small.
 4. **Propose** — write the smallest change that addresses the cause.
 5. **Apply** — edit the lesson and/or `tools/check.py`. Keep it to one
    concern.
@@ -80,7 +83,7 @@ Evaluate each lesson against these. Record findings as
 ## Guardrails
 
 - Never optimise for completion rate alone. A check that everyone passes
-  instantly is a finding ("trivial pass"), not a win.
+  instantly is a finding, not a win.
 - Never change the lesson a learner is currently on (`current_lesson` in
   their progress file) in a way that invalidates their in-progress work.
 - Changes are ordinary Git commits: reviewable, revertable.

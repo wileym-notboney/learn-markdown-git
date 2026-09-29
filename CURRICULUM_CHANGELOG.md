@@ -16,6 +16,101 @@ Entry template:
 - Re-evaluate: yes/no — when
 ```
 
+## 2026-09-29 — Decision log and review minors
+
+- Observed problem: entries and code comments cite `DL-nnn` decisions, but `tools/README.md` did not exist; three review minors remained (selftest `Learner.line` raised a bare `StopIteration`, the DL-006 comment sat above the wrong regression, `setup_conflict.py` printed a blank line when git failed silently).
+- Evidence: adversarial review of 2026-09-28, minor findings. `python tools/selftest.py` wall time at this commit: 16.8s.
+- Hypothesis: Readers cannot follow a citation to a file that is missing, and a bare `StopIteration` or blank line hides which check or git step failed.
+- Change made: added `tools/README.md` (invariants and DL-002 to DL-014); `Learner.line` raises an `AssertionError` naming the check id and output; the DL-006 reference moved above `scratch_recovery_as_written`; `step` prints "(no output from git)" with the exit code when stderr is empty.
+- Expected improvement: every `DL-nnn` reference resolves; selftest and helper failures name their cause.
+- Re-evaluate: no
+- Decisions: DL-002 to DL-014 in tools/README.md.
+
+## 2026-09-29 — Selftest tells a checker crash from an expected failure
+
+- Observed problem: `Learner.check` treated any nonzero exit as "fail", so a regression that expects a failing check also passed when `check.py` crashed.
+- Evidence: adversarial review of 2026-09-28: a `check.py` that raises at import makes every expected-fail assertion pass. `python tools/selftest.py` wall time at this commit: 7.0s.
+- Hypothesis: Only exit codes 0 and 1 without a traceback on stderr mean pass or fail; everything else is the harness failing.
+- Change made: `Learner.check` raises on other exit codes or a traceback; added `Learner.line` (output line for one check id) and `fresh_course` (one fixture per regression) for the regressions that follow.
+- Expected improvement: a broken checker fails selftest loudly instead of looking like an exercise that has not been done yet.
+- Re-evaluate: no
+- Decisions: DL-002, DL-003 in tools/README.md.
+
+## 2026-09-29 — Conflict helper no longer commits unrelated work or reports false success
+
+- Observed problem: `tools/setup_conflict.py` ran a plain `git commit`, which commits the whole index, so anything the learner had staged landed on `conflict-practice`; and it ignored git's exit codes, so a failed commit still printed "Created branch".
+- Evidence: adversarial review findings F1 and F2, reproduced by staging an unrelated file and by a pre-commit hook that exits 1. `python tools/selftest.py` wall time at this commit: 8.3s.
+- Hypothesis: Preflight has to look at the whole working tree, not just favorites.md, and every git call has to be checked; a helper that fails should report where it stopped and leave the repository as it is.
+- Change made: Whole-tree preflight (untracked files allowed), each git step return-code checked with the first failure reported, success printed only after the branch tip and current branch are verified. No reset or restore anywhere. Two selftest regressions.
+- Expected improvement: a learner with unrelated staged work is told to commit or stash it instead of losing it into the practice branch; a failed helper never reads as success.
+- Re-evaluate: no
+- Decisions: DL-004 in tools/README.md.
+
+## 2026-09-29 — Lesson 06 check accepts every valid conflict resolution
+
+- Observed problem: `merge_touching` compared a merge commit with its first parent, so a learner who resolved the conflict by keeping the line already on `main` produced a merge identical to `main` on that path and `06.merge.commit` failed.
+- Evidence: adversarial review finding F3: resolving with main's colour failed the check while purple passed. `python tools/selftest.py` wall time at this commit: 11.1s.
+- Hypothesis: A conflict needs both sides to have changed the file since their merge base, so requiring both parents to differ from the base accepts ours, theirs and combined resolutions and rejects a merge only one side touched.
+- Change made: `merge_touching(path, both_sides=True)` requires the path to differ from the merge base on both parents; 06.merge.commit uses it, the Lesson 09 check keeps the first-parent test. New selftest regression resolves the conflict three ways and requires 06.merge.commit to pass in each; a fast-forward and a no-conflict `--no-ff` merge still fail it.
+- Expected improvement: a correct resolution is never rejected for the value the learner chose.
+- Re-evaluate: no
+- Decisions: DL-005 in tools/README.md.
+
+## 2026-09-29 — Lesson 04.3: recovering a committed scratch file reaches the checked state
+- Observed problem: Common Mistakes 4.3 told a learner who committed `scratch.md` to delete the file and commit the deletion; that leaves the file missing, and `04.scratch.untracked` requires it to exist and be untracked, so the check could never pass by following the text.
+- Evidence: adversarial review finding F8: commit scratch.md, delete it and commit the deletion, and 04.scratch.untracked fails with "workspace/scratch.md not found". `python tools/selftest.py` wall time at this commit: 11.4s.
+- Hypothesis: The recovery advice was written against the desired end state (untracked) without walking the steps to see whether they reach it.
+- Change made: Common Mistakes 4.3 now says `git rm --cached workspace/scratch.md`, then commit; the different-scratch-file suggestion is removed; the check's Try text names the same command. The check rule is unchanged. New selftest regression follows the text literally.
+- Expected improvement: a learner who committed the file by reflex can get to green without losing it.
+- Re-evaluate: yes — when lesson 04 progress data exists
+- Decisions: DL-006 in tools/README.md.
+
+## 2026-09-29 — Separate-commit checks require a commit per file
+- Observed problem: `03.commit.separate` counted learner commits (three or more) and `04.commits.two-more` counted commits touching each file, so one bundled commit plus unrelated or empty commits passed, and one combined edit passed as two. The old Recovery text also said bundling was acceptable, which would have made the stricter check unpassable.
+- Evidence: adversarial review finding F6: one commit holding hello, profile and notes, then a favorites commit and an empty commit, passed `03.commit.separate`. Selftest now walks both Recovery texts literally. `python tools/selftest.py` wall time at this commit: 14.1s.
+- Hypothesis: The lessons promise "one commit per thing"; the check should look at what each commit touched, since history carries that evidence, and the recovery path must lead to a state the check accepts.
+- Change made: `exclusive_commits(path, *others)` in `tools/check.py`; lesson 03 needs a commit of its own for each of hello, profile and notes, lesson 04 needs two for profile.md and two for notes/README.md relative to each other. Exercise 3.2 and 4.1 Recovery now say to make one more small edit to each file and commit each alone. Four selftest regressions.
+- Expected improvement: a learner who bundled files is told exactly what to do instead of being told it is fine, and false green from padding commits is gone.
+- Re-evaluate: yes — when lesson 03 and 04 progress data exists
+- Decisions: DL-007 in tools/README.md.
+
+## 2026-09-29 — Markdown checks stop counting text inside code fences
+- Observed problem: The lesson 01 and 09 checks ran regular expressions over the raw file, so a profile wrapped in a code fence (shown as text, rendering none of it) passed all thirteen checks, and `**x**` in backticks counted as bold.
+- Evidence: adversarial review finding F7: the PROFILE fixture wrapped in a four-backtick fence passed every 01 check. `python tools/selftest.py` wall time at this commit: 15.5s.
+- Hypothesis: Structure only counts if it renders; a small line scanner following the CommonMark fence rules is enough for the subset the lessons teach, without a parser dependency.
+- Change made: `split_fences` (backtick and tilde fences, closing fence at least as long, unclosed fence runs to end of file) and `strip_inline_code` in `tools/check.py`; code-block rules test the extracted blocks, and the Lesson 09 rule requires an info string. Indented code blocks are not detected (outside the taught subset). Three selftest cases: fenced, unclosed tilde, and a nested example fence.
+- Expected improvement: a learner cannot reach green by pasting the exercise inside a code block; rendered-preview checking remains the learner's job.
+- Re-evaluate: yes — when lesson 01 and 09 progress data exists
+- Decisions: DL-008 in tools/README.md.
+
+## 2026-09-29 — Lesson 07 no longer accepts unpushed local edits as a pull
+
+- Observed problem: `07.remote.pulled` counted reading-list commits on local `main`, so two local commits and no pull passed; `07.remote.pushed` passed whenever `main` was ahead of `origin/main` and gave one message for two different problems.
+- Evidence: adversarial review finding F5: push a baseline, make two local reading-list commits, never pull, and lesson 07 passed. `python tools/selftest.py` wall time at this commit: 15.5s.
+- Hypothesis: Which folder authored a commit cannot be proven from history, but whether the remote has the commit and whether main contains it can. The rest is learner self-verification and the lesson should say so.
+- Change made: `07.remote.pushed`: distinct behind and diverged messages. `07.remote.pulled`: origin/main must carry two learner reading-list commits and main must contain origin/main (stateless, so it survives lessons 08-09 advancing main). `learner_commits` takes a `rev`. Check Your Work states what is checked and points to `git log` for provenance. One selftest regression.
+- Expected improvement: a learner who never pulled is sent to the clone, and the lesson does not claim more than the checker verifies.
+- Re-evaluate: yes — when lesson 07 progress data exists
+- Decisions: DL-009 in tools/README.md.
+
+## 2026-09-29 — Progress file is validated and written atomically
+- Observed problem: `load_progress` treated malformed JSON like a missing file, so the next save replaced a learner's history with an empty record; the write was not atomic.
+- Evidence: adversarial review finding F9: write invalid JSON to `.learning/progress.json`, run `check.py`, and it is replaced. `python tools/selftest.py` wall time at this commit: 15.8s.
+- Hypothesis: A missing file means "start fresh"; a file that exists but cannot be trusted means "stop and tell the learner", because the file is the only copy of their history.
+- Change made: `ProgressError` and a shared `valid_progress` predicate in `tools/check.py`; `main` prints the path, the reason and how to recover, and returns 2 without writing. `review.load` applies the same predicate. One selftest regression.
+- Expected improvement: a damaged progress file is never silently destroyed; review does not aggregate garbage.
+- Re-evaluate: no
+- Decisions: DL-010 in tools/README.md.
+
+## 2026-09-29 — Curriculum metrics only claim what the data supports
+- Observed problem: `review.py` inferred abandonment from a later lesson having a record and triviality from a sub-minute gap between two check runs; neither is measured. `check.py all` recorded every lesson as started, and failures after a pass raised `fails`, so both distorted "hard to pass" and "difficulty jump".
+- Evidence: adversarial review finding F4: running `check.py all` on an untouched course created a record for every lesson; three failing rechecks after a pass changed `fails` from 0 to 3. `python tools/selftest.py` wall time at this commit: 16.7s.
+- Hypothesis: Deleting signals the data cannot support is smaller and more honest than a new schema version; additive keys read with `.get` keep existing files valid.
+- Change made: `check.py all` is read-only; `record_run` counts rechecks separately and freezes `fails_before_pass`; `review.py` drops the two signals, their table columns and classification branches, and renames the Started column to Records. README and CURRICULUM_REVIEW.md describe what is and is not measured (CURRICULUM_REVIEW.md is outside the original file list because its signal table documented the removed signals). Two selftest regressions.
+- Expected improvement: a maintainer is only pointed at lessons by evidence the tool actually has; a learner running `all` does not change their own record.
+- Re-evaluate: yes — when real progress files exist, to see whether "hard to pass" alone is enough
+- Decisions: DL-011, DL-012 in tools/README.md.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran
@@ -27,9 +122,9 @@ Entry template:
   lesson's work the way its text describes rather than the way the
   simulation did. The simulation always ran the checker before committing,
   so it could not reach fault (1) at all.
-- Hypothesis: "the learner's commits" had been defined by *time* (a baseline
+- Hypothesis: "the learner's commits" had been defined by _time_ (a baseline
   recorded on first run), and time is the one thing a learner controls
-  freely. Defining it by *content* — a commit touching learner files and not
+  freely. Defining it by _content_ — a commit touching learner files and not
   curriculum files — removes the ordering assumption entirely and also
   survives pulling curriculum updates.
 - Change made: replaced the stored baseline with `is_maintainer()` /

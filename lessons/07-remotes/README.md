@@ -178,8 +178,11 @@ This changes a nickname only; nothing is downloaded or deleted.
 python tools/check.py 07
 ```
 
-The checker confirms `origin` exists, `main` and `origin/main` match, and
-that at least one commit arrived via the remote.
+The checker confirms `origin` exists, your `main` contains everything on
+`origin/main`, and the remote holds a second `reading-list.md` commit that
+your `main` also has. It cannot tell which folder made that commit; confirm
+that yourself with `git log --format='%h %an %s' -- workspace/reading-list.md`
+and the clone's `git log`.
 
 ### What You Should Notice
 

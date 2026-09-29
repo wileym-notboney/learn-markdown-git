@@ -57,7 +57,7 @@ From the repository's top folder:
 ```text
 python tools/check.py        # checks the lesson you are currently on
 python tools/check.py 03     # checks lesson 03
-python tools/check.py all    # checks everything so far
+python tools/check.py all    # checks every lesson; does not record progress
 ```
 
 On some systems the command is `python3` instead of `python`.
