@@ -37,6 +37,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Lesson 01 and Lesson 09 Markdown checks ignore fenced code blocks and
   inline code spans, so Markdown shown as an example no longer counts as
   Markdown used. Code-block rules test the fenced blocks themselves.
+- `07.remote.pulled` requires the second `reading-list.md` commit to be on
+  `origin/main` and contained in `main`; `07.remote.pushed` reports "behind"
+  and "diverged" separately. Lesson 07 Check Your Work says what the checker
+  can and cannot verify.
 
 ### Added
 

@@ -68,8 +68,14 @@ def curriculum_tip():
     return git("log", "-1", "--format=%H", "--", *CURRICULUM_PATHS)
 
 
-def learner_commits(*paths, merges=None):
-    """Subjects of the learner's own commits touching `paths`, newest first.
+def is_ancestor(older, newer):
+    return subprocess.run(["git", "merge-base", "--is-ancestor", older, newer],
+                          cwd=ROOT, capture_output=True).returncode == 0
+
+
+def learner_commits(*paths, merges=None, rev="HEAD"):
+    """Subjects of the learner's own commits touching `paths` reachable from
+    `rev`, newest first.
 
     A commit counts as the learner's when it touches these paths and does not
     touch the curriculum. That is a property of the commit itself, so it holds
@@ -77,7 +83,7 @@ def learner_commits(*paths, merges=None):
     curriculum updates pulled in later, or a course installed by cloning.
     """
     flag = {True: ["--merges"], False: ["--no-merges"], None: []}[merges]
-    out = git("log", "--format=%H %s", *flag, "--", *paths)
+    out = git("log", "--format=%H %s", *flag, rev, "--", *paths)
     return [line.split(" ", 1)[1] for line in out.splitlines()
             if " " in line and not is_maintainer(line.split(" ", 1)[0])]
 
@@ -455,21 +461,35 @@ def _():
                 "git remote add origin ../learn-git-remote.git (Exercise 7.1)")
 
 
+NOT_PUSHED = ("origin/main does not exist; nothing has been pushed", "git log --oneline --all -3",
+              "git push -u origin main")
+
+
 @check("07", "07.remote.pushed", "push", "main has been pushed and has not diverged from origin/main")
 def _():
     if not git("rev-parse", "--verify", "origin/main"):
-        return ("origin/main does not exist; nothing has been pushed", "git log --oneline --all -3",
-                "git push -u origin main")
-    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", "origin/main", "main"], cwd=ROOT)
-    if ancestor.returncode != 0:
-        return ("origin/main has commits that main does not", "git status", "git pull, resolve if needed, then git push")
+        return NOT_PUSHED
+    if is_ancestor("main", "origin/main") and git("rev-parse", "main") != git("rev-parse", "origin/main"):
+        return ("main is behind origin/main", "git status", "git pull")
+    if not is_ancestor("origin/main", "main"):
+        return ("main and origin/main have diverged", "git log --oneline --graph --all -6",
+                "git pull, resolve if needed, then git push")
 
 
-@check("07", "07.remote.pulled", "pull", "reading-list.md was changed by a commit made in the clone")
+@check("07", "07.remote.pulled", "pull", "origin/main carries a second reading-list commit and main contains it")
 def _():
-    if len(learner_commits("workspace/reading-list.md")) < 2:
-        return ("reading-list.md has only its original commit", "git log --oneline -- workspace/reading-list.md",
-                "Commit a change in ../learn-git-clone, push there, then git pull here")
+    if not git("rev-parse", "--verify", "origin/main"):
+        return NOT_PUSHED
+    if not is_ancestor("origin/main", "main"):
+        return ("main does not contain everything on origin/main", "git status", "git pull")
+    # Stateless on purpose: requiring main == origin/main would fail once lessons 08-09
+    # advance main. The second commit must be on origin/main, which rejects unpushed
+    # local edits. Which clone authored it is not provable from history, so lesson 07
+    # labels that step as self-verification. (ref: DL-009)
+    if len(learner_commits("workspace/reading-list.md", rev="origin/main")) < 2:
+        return ("the remote does not have a second reading-list commit yet",
+                "git log --oneline origin/main -- workspace/reading-list.md",
+                "Make it in ../learn-git-clone, push there, then git pull here (Exercise 7.1)")
 
 
 # ---------------------------------------------------------------- lesson 08

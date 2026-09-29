@@ -47,6 +47,7 @@ Entry template:
 - Decisions: DL-005 in tools/README.md.
 
 ## 2026-09-29 — Lesson 04.3: recovering a committed scratch file reaches the checked state
+
 - Observed problem: Common Mistakes 4.3 told a learner who committed `scratch.md` to delete the file and commit the deletion; that leaves the file missing, and `04.scratch.untracked` requires it to exist and be untracked, so the check could never pass by following the text.
 - Evidence: adversarial review finding F8: commit scratch.md, delete it and commit the deletion, and 04.scratch.untracked fails with "workspace/scratch.md not found". `python tools/selftest.py` wall time at this commit: 11.4s.
 - Hypothesis: The recovery advice was written against the desired end state (untracked) without walking the steps to see whether they reach it.
@@ -56,6 +57,7 @@ Entry template:
 - Decisions: DL-006 in tools/README.md.
 
 ## 2026-09-29 — Separate-commit checks require a commit per file
+
 - Observed problem: `03.commit.separate` counted learner commits (three or more) and `04.commits.two-more` counted commits touching each file, so one bundled commit plus unrelated or empty commits passed, and one combined edit passed as two. The old Recovery text also said bundling was acceptable, which would have made the stricter check unpassable.
 - Evidence: adversarial review finding F6: one commit holding hello, profile and notes, then a favorites commit and an empty commit, passed `03.commit.separate`. Selftest now walks both Recovery texts literally. `python tools/selftest.py` wall time at this commit: 14.1s.
 - Hypothesis: The lessons promise "one commit per thing"; the check should look at what each commit touched, since history carries that evidence, and the recovery path must lead to a state the check accepts.
@@ -65,6 +67,7 @@ Entry template:
 - Decisions: DL-007 in tools/README.md.
 
 ## 2026-09-29 — Markdown checks stop counting text inside code fences
+
 - Observed problem: The lesson 01 and 09 checks ran regular expressions over the raw file, so a profile wrapped in a code fence (shown as text, rendering none of it) passed all thirteen checks, and `**x**` in backticks counted as bold.
 - Evidence: adversarial review finding F7: the PROFILE fixture wrapped in a four-backtick fence passed every 01 check. `python tools/selftest.py` wall time at this commit: 15.5s.
 - Hypothesis: Structure only counts if it renders; a small line scanner following the CommonMark fence rules is enough for the subset the lessons teach, without a parser dependency.
@@ -72,6 +75,16 @@ Entry template:
 - Expected improvement: a learner cannot reach green by pasting the exercise inside a code block; rendered-preview checking remains the learner's job.
 - Re-evaluate: yes — when lesson 01 and 09 progress data exists
 - Decisions: DL-008 in tools/README.md.
+
+## 2026-09-29 — Lesson 07 no longer accepts unpushed local edits as a pull
+
+- Observed problem: `07.remote.pulled` counted reading-list commits on local `main`, so two local commits and no pull passed; `07.remote.pushed` passed whenever `main` was ahead of `origin/main` and gave one message for two different problems.
+- Evidence: adversarial review finding F5: push a baseline, make two local reading-list commits, never pull, and lesson 07 passed. `python tools/selftest.py` wall time at this commit: 15.5s.
+- Hypothesis: Which folder authored a commit cannot be proven from history, but whether the remote has the commit and whether main contains it can. The rest is learner self-verification and the lesson should say so.
+- Change made: `07.remote.pushed`: distinct behind and diverged messages. `07.remote.pulled`: origin/main must carry two learner reading-list commits and main must contain origin/main (stateless, so it survives lessons 08-09 advancing main). `learner_commits` takes a `rev`. Check Your Work states what is checked and points to `git log` for provenance. One selftest regression.
+- Expected improvement: a learner who never pulled is sent to the clone, and the lesson does not claim more than the checker verifies.
+- Re-evaluate: yes — when lesson 07 progress data exists
+- Decisions: DL-009 in tools/README.md.
 
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 

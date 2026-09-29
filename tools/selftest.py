@@ -352,6 +352,26 @@ def nested_example_fence_ok(tmp):
     print("  nested example fence: profile still passes")
 
 
+# The remote must carry the second commit; local edits alone are not a pull. (ref: DL-009)
+def local_edits_not_pull(tmp):
+    """Two local reading-list commits are not a pull: the remote must have
+    the second commit and main must contain it."""
+    l = fresh_course(tmp, "local-edits")
+    l.write("workspace/reading-list.md", "# Reading list\n\n- Pro Git\n")
+    l.commit("Add reading list", "workspace/reading-list.md")
+    remote = os.path.join(tmp, "local-edits-remote.git")
+    l.git("init", "-q", "--bare", "-b", "main", remote)
+    l.git("remote", "add", "origin", remote)
+    l.git("push", "-q", "-u", "origin", "main")
+    l.append("workspace/reading-list.md", "- A novel\n")
+    l.commit("Add a novel to the reading list", "workspace/reading-list.md")
+    l.append("workspace/reading-list.md", "- A poem\n")
+    l.commit("Add a poem to the reading list", "workspace/reading-list.md")
+    out = l.check("07", "fail")
+    assert l.line(out, "07.remote.pulled").split()[0] == "--", "unpushed local edits passed 07.remote.pulled"
+    print("  local edits: not accepted as a pull")
+
+
 def scratch_recovery_as_written(tmp):
     """Lesson 04 Common Mistakes: a committed scratch file must be recoverable
     by the steps the lesson gives, without losing the file."""
@@ -566,7 +586,8 @@ def main():
                            bundled_41_recovery_as_written,
                            bundled_32_recovery_as_written,
                            fenced_profile_rejected,
-                           nested_example_fence_ok):
+                           nested_example_fence_ok,
+                           local_edits_not_pull):
             regression(tmp)
         r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr
