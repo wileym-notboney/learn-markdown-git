@@ -168,7 +168,9 @@ The `04.messages.*` checks read your last several commit subjects.
 ### Recovery
 
 Staged the wrong file? `git restore --staged <file>`. Committed both
-together? Fine; do the next exercise's commits separately instead.
+together? Make one more small edit to each file and commit each on its own
+(two commits), so each file still ends up with commits of its own when you
+run the check.
 
 ### Reflection
 

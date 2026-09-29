@@ -30,6 +30,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   by combining them, not only the resolutions that change the main line.
 - Lesson 04 Exercise 4.3 recovery for a committed `scratch.md` now ends in
   the state `04.scratch.untracked` checks for.
+- `03.commit.separate` and `04.commits.two-more` require commits that touch
+  only their own file or folder, not just enough commits overall. Recovery
+  text in Exercises 3.2 and 4.1 now tells a learner who bundled the files how
+  to reach the checked state.
 
 ### Added
 

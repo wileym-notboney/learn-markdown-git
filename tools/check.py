@@ -74,6 +74,16 @@ def learner_commits(*paths, merges=None):
             if " " in line and not is_maintainer(line.split(" ", 1)[0])]
 
 
+def exclusive_commits(path, *others):
+    """Hashes of the learner's commits that touch `path` and none of `others`:
+    one thing per commit, not just a count of commits."""
+    # A count of commits passes one bundled commit plus unrelated or empty ones.
+    # git log -- path already skips commits that do not touch path. (ref: DL-007)
+    hashes = git("log", "--no-merges", "--format=%H", "--", path).splitlines()
+    return [h for h in hashes if not is_maintainer(h)
+            and not git("show", "--format=", "--name-only", h, "--", *others)]
+
+
 def merge_touching(path, both_sides=False):
     """Learner merge commits that change `path` relative to their first parent.
     With both_sides, only merges where each parent changed `path` since their
@@ -272,10 +282,11 @@ commit_touching("03", "03.commit.notes", "workspace/notes/", "the workspace/note
 
 @check("03", "03.commit.separate", "commit", "hello, profile, and notes were committed separately")
 def _():
-    subjects = learner_commits()
-    if len(subjects) < 3:
-        return (f"only {len(subjects)} commit(s) of yours so far; expected at least three",
-                "git log --oneline", "One commit per file/folder (Exercise 3.2)")
+    paths = ["workspace/hello.md", PROFILE, "workspace/notes"]
+    for path in paths:
+        if not exclusive_commits(path, *[p for p in paths if p != path]):
+            return (f"no commit of yours touches only {path}", "git log --oneline --stat",
+                    "One commit per file/folder (Exercise 3.2); if they were bundled, see Recovery in Exercise 3.2")
 
 
 @check("03", "03.clean", "working-tree", "working tree is clean (everything committed)")
@@ -300,10 +311,12 @@ def _():
 
 @check("04", "04.commits.two-more", "selective-staging", "two more commits exist after Lesson 03 (profile edit, notes edit)")
 def _():
-    if len(learner_commits(PROFILE)) < 2 or len(learner_commits(NOTES)) < 2:
-        return ("profile.md and notes/README.md should each have at least two commits by now",
-                f"git log --oneline -- {PROFILE}; git log --oneline -- {NOTES}",
-                "Exercise 4.1: edit both, then commit each separately")
+    for path, other in ((PROFILE, NOTES), (NOTES, PROFILE)):
+        n = len(exclusive_commits(path, other))
+        if n < 2:
+            return (f"{path} has {n} commit(s) of its own (touching it and not {other}); expected at least two",
+                    f"git log --oneline --stat -- {path}",
+                    "Exercise 4.1: edit both, then commit each separately (see Recovery in 4.1 if they were bundled)")
 
 
 @check("04", "04.restore.hello", "git-restore", "workspace/hello.md matches its committed version")

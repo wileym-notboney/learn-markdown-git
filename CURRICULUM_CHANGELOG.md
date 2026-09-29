@@ -55,6 +55,15 @@ Entry template:
 - Re-evaluate: yes — when lesson 04 progress data exists
 - Decisions: DL-006 in tools/README.md.
 
+## 2026-09-29 — Separate-commit checks require a commit per file
+- Observed problem: `03.commit.separate` counted learner commits (three or more) and `04.commits.two-more` counted commits touching each file, so one bundled commit plus unrelated or empty commits passed, and one combined edit passed as two. The old Recovery text also said bundling was acceptable, which would have made the stricter check unpassable.
+- Evidence: adversarial review finding F6: one commit holding hello, profile and notes, then a favorites commit and an empty commit, passed `03.commit.separate`. Selftest now walks both Recovery texts literally. `python tools/selftest.py` wall time at this commit: 14.1s.
+- Hypothesis: The lessons promise "one commit per thing"; the check should look at what each commit touched, since history carries that evidence, and the recovery path must lead to a state the check accepts.
+- Change made: `exclusive_commits(path, *others)` in `tools/check.py`; lesson 03 needs a commit of its own for each of hello, profile and notes, lesson 04 needs two for profile.md and two for notes/README.md relative to each other. Exercise 3.2 and 4.1 Recovery now say to make one more small edit to each file and commit each alone. Four selftest regressions.
+- Expected improvement: a learner who bundled files is told exactly what to do instead of being told it is fine, and false green from padding commits is gone.
+- Re-evaluate: yes — when lesson 03 and 04 progress data exists
+- Decisions: DL-007 in tools/README.md.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran

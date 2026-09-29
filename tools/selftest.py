@@ -250,6 +250,87 @@ def conflict_resolutions_all_pass(tmp):
 
 
 # Follows the lesson text literally, so text and check cannot drift apart. (ref: DL-006)
+def course_after_lesson_03(tmp, name):
+    """A course where hello, profile and notes each have a commit of their own."""
+    l = fresh_course(tmp, name)
+    l.write("workspace/hello.md", "# Hello\n")
+    l.write("workspace/profile.md", PROFILE)
+    l.write("workspace/notes/README.md", NOTES)
+    l.write("workspace/notes/git-commands.md", GIT_COMMANDS)
+    l.commit("Add hello file", "workspace/hello.md")
+    l.commit("Add profile page", "workspace/profile.md")
+    l.commit("Add notes index and git command reference", "workspace/notes")
+    return l
+
+
+# Padding with unrelated and empty commits must not satisfy a per-path check. (ref: DL-007)
+def bundled_commit_rejected(tmp):
+    """One commit holding hello, profile and notes, padded with unrelated and
+    empty commits, is not three separate commits."""
+    l = fresh_course(tmp, "bundled")
+    l.write("workspace/hello.md", "# Hello\n")
+    l.write("workspace/profile.md", PROFILE)
+    l.write("workspace/notes/README.md", NOTES)
+    l.commit("Add hello, profile and notes together", "workspace")
+    l.write("workspace/favorites.md", FAVORITES)
+    l.commit("Add favorites", "workspace/favorites.md")
+    l.git("commit", "-q", "--allow-empty", "-m", "Record an empty commit")
+    out = l.check("03", "fail")
+    assert l.line(out, "03.commit.separate").split()[0] == "--", "a bundled commit passed 03.commit.separate"
+    print("  bundled commit: rejected by 03.commit.separate")
+
+
+def combined_edit_rejected(tmp):
+    """Editing profile and notes in one commit is one commit, not two more each."""
+    l = course_after_lesson_03(tmp, "combined")
+    l.append("workspace/profile.md", "4. Merge conflicts\n")
+    l.append("workspace/notes/README.md", "- [ ] 04 Everyday Git\n")
+    l.commit("Update profile and notes together", "workspace")
+    out = l.check("04", "fail")
+    assert l.line(out, "04.commits.two-more").split()[0] == "--", "a combined edit passed 04.commits.two-more"
+    print("  combined edit: rejected by 04.commits.two-more")
+
+
+# Follows the Recovery text literally to the checked state. (ref: DL-007)
+def bundled_41_recovery_as_written(tmp):
+    """Lesson 04.1 Recovery: a learner who bundled profile and notes must be
+    able to reach 04.commits.two-more by the steps the lesson gives."""
+    l = course_after_lesson_03(tmp, "recover-41")
+    l.append("workspace/profile.md", "4. Merge conflicts\n")
+    l.append("workspace/notes/README.md", "- [ ] 04 Everyday Git\n")
+    l.commit("Update profile and notes together", "workspace")
+    l.append("workspace/profile.md", "5. Remotes again\n")
+    l.commit("Add a fifth item to the learning list", "workspace/profile.md")
+    l.append("workspace/notes/README.md", "- [ ] 05 Branches\n")
+    l.commit("Add branches to the progress checklist", "workspace/notes/README.md")
+    l.write("workspace/hello.md", "oops\n")
+    l.git("restore", "workspace/hello.md")
+    l.write("workspace/scratch.md", "scratch\n")
+    out = l.check("04", "pass")
+    assert l.line(out, "04.commits.two-more").split()[0] == "ok", "4.1 Recovery did not reach 04.commits.two-more"
+    print("  lesson 04.1 recovery: reaches 04.commits.two-more")
+
+
+# Follows the Recovery text literally to the checked state. (ref: DL-007)
+def bundled_32_recovery_as_written(tmp):
+    """Lesson 03.2 Recovery: a learner who bundled profile and notes must be
+    able to reach 03.commit.separate by the steps the lesson gives."""
+    l = fresh_course(tmp, "recover-32")
+    l.write("workspace/hello.md", "# Hello\n")
+    l.commit("Add hello file", "workspace/hello.md")
+    l.write("workspace/profile.md", PROFILE)
+    l.write("workspace/notes/README.md", NOTES)
+    l.write("workspace/notes/git-commands.md", GIT_COMMANDS)
+    l.commit("Add profile and notes together", "workspace")
+    l.append("workspace/profile.md", "4. Merge conflicts\n")
+    l.commit("Add merge conflicts to learning list", "workspace/profile.md")
+    l.append("workspace/notes/git-commands.md", "\nSee also the profile.\n")
+    l.commit("Add a see-also line to the command reference", "workspace/notes")
+    out = l.check("03", "pass")
+    assert l.line(out, "03.commit.separate").split()[0] == "ok", "3.2 Recovery did not reach 03.commit.separate"
+    print("  lesson 03.2 recovery: reaches 03.commit.separate")
+
+
 def scratch_recovery_as_written(tmp):
     """Lesson 04 Common Mistakes: a committed scratch file must be recoverable
     by the steps the lesson gives, without losing the file."""
@@ -458,7 +539,11 @@ def main():
         for regression in (helper_refuses_staged_work,
                            helper_stops_on_git_failure,
                            conflict_resolutions_all_pass,
-                           scratch_recovery_as_written):
+                           scratch_recovery_as_written,
+                           bundled_commit_rejected,
+                           combined_edit_rejected,
+                           bundled_41_recovery_as_written,
+                           bundled_32_recovery_as_written):
             regression(tmp)
         r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr
