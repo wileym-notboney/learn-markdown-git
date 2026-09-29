@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Adversarial review of the tooling (`docs/adversarial-review-2026-09-28.md`)
   and the remediation plan that implements its findings
   (`docs/superpowers/plans/2026-09-29-adversarial-review-remediation.md`).
+- `tools/README.md` records the tooling invariants and the decision log
+  (DL-nnn) cited by code comments and `CURRICULUM_CHANGELOG.md`.
 
 ### Fixed
 
@@ -51,10 +53,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `review.py` no longer reports "abandoned" or "trivial pass", which were
   derived from timestamps that only show when the checker ran. "Hard to pass"
   uses `fails_before_pass` and ignores records that lack it.
-- Lesson 07 README formatting has been reverted from the previous commit to
-  keep the focus on the Check Your Work change; extra emphasis/table
-  alignment/indentation changes that were not part of the planned lesson edit
-  have been removed.
 
 ### Added
 

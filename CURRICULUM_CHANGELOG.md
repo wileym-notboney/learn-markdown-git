@@ -16,6 +16,16 @@ Entry template:
 - Re-evaluate: yes/no — when
 ```
 
+## 2026-09-29 — Decision log and review minors
+
+- Observed problem: entries and code comments cite `DL-nnn` decisions, but `tools/README.md` did not exist; three review minors remained (selftest `Learner.line` raised a bare `StopIteration`, the DL-006 comment sat above the wrong regression, `setup_conflict.py` printed a blank line when git failed silently).
+- Evidence: adversarial review of 2026-09-28, minor findings. `python tools/selftest.py` wall time at this commit: 16.8s.
+- Hypothesis: Readers cannot follow a citation to a file that is missing, and a bare `StopIteration` or blank line hides which check or git step failed.
+- Change made: added `tools/README.md` (invariants and DL-002 to DL-014); `Learner.line` raises an `AssertionError` naming the check id and output; the DL-006 reference moved above `scratch_recovery_as_written`; `step` prints "(no output from git)" with the exit code when stderr is empty.
+- Expected improvement: every `DL-nnn` reference resolves; selftest and helper failures name their cause.
+- Re-evaluate: no
+- Decisions: DL-002 to DL-014 in tools/README.md.
+
 ## 2026-09-29 — Selftest tells a checker crash from an expected failure
 
 - Observed problem: `Learner.check` treated any nonzero exit as "fail", so a regression that expects a failing check also passed when `check.py` crashed.

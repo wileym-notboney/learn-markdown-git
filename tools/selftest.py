@@ -64,7 +64,10 @@ class Learner:
     @staticmethod
     def line(out, cid):
         """The check.py output line for one check id; its first word is 'ok' or '--'."""
-        return next(ln for ln in out.splitlines() if ln.split()[1:2] == [cid])
+        found = next((ln for ln in out.splitlines() if ln.split()[1:2] == [cid]), None)
+        if found is None:
+            raise AssertionError(f"no output line for check {cid}; output was:\n{out}")
+        return found
 
 
 def setup(root):
@@ -250,7 +253,7 @@ def conflict_resolutions_all_pass(tmp):
     print("  conflict resolutions: ours, theirs and combined pass; one-sided merges do not")
 
 
-# Follows the lesson text literally, so text and check cannot drift apart. (ref: DL-006)
+# Follows the lesson text literally, so text and check cannot drift apart.
 def course_after_lesson_03(tmp, name):
     """A course where hello, profile and notes each have a commit of their own."""
     l = fresh_course(tmp, name)
@@ -419,6 +422,7 @@ def rechecks_do_not_rewrite_first_pass(tmp):
     print("  rechecks: first pass stays frozen")
 
 
+# Lesson 04 scratch recovery, step by step. (ref: DL-006)
 def scratch_recovery_as_written(tmp):
     """Lesson 04 Common Mistakes: a committed scratch file must be recoverable
     by the steps the lesson gives, without losing the file."""

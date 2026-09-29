@@ -61,7 +61,9 @@ def stopped(label, detail):
 def step(label, *args):
     """Run one git command; return None on success, else report and return 1."""
     result = git(*args)
-    return None if result.returncode == 0 else stopped(label, result.stderr)
+    if result.returncode == 0:
+        return None
+    return stopped(label, result.stderr.strip() or f"(no output from git; exit code {result.returncode})")
 
 
 def write_favorites(lines):
