@@ -249,6 +249,21 @@ def conflict_resolutions_all_pass(tmp):
     print("  conflict resolutions: ours, theirs and combined pass; one-sided merges do not")
 
 
+# Follows the lesson text literally, so text and check cannot drift apart. (ref: DL-006)
+def scratch_recovery_as_written(tmp):
+    """Lesson 04 Common Mistakes: a committed scratch file must be recoverable
+    by the steps the lesson gives, without losing the file."""
+    l = fresh_course(tmp, "scratch")
+    l.write("workspace/scratch.md", "scratch\n")
+    l.commit("Add scratch file", "workspace/scratch.md")
+    l.git("rm", "-q", "--cached", "workspace/scratch.md")
+    l.git("commit", "-q", "-m", "Stop tracking scratch file")
+    out = l.check("04", "fail")
+    assert l.line(out, "04.scratch.untracked").split()[0] == "ok", "recovery steps did not reach the checked state"
+    assert open(os.path.join(l.root, "workspace/scratch.md")).read() == "scratch\n", "recovery lost the file contents"
+    print("  scratch recovery: lesson 04 steps reach the checked state")
+
+
 def commits_before_first_check(l):
     """A learner who does a whole lesson and only then runs the checker must
     still have their commits recognised (found by hand-walking lesson 03)."""
@@ -442,7 +457,8 @@ def main():
         lesson_09(l)
         for regression in (helper_refuses_staged_work,
                            helper_stops_on_git_failure,
-                           conflict_resolutions_all_pass):
+                           conflict_resolutions_all_pass,
+                           scratch_recovery_as_written):
             regression(tmp)
         r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr

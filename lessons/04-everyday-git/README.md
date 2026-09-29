@@ -319,10 +319,11 @@ python tools/check.py 04
 
 - Running `git restore workspace/scratch.md` (no `--staged`) on an
   untracked file: Git says it has no version to restore from. Harmless.
-- Committing it by reflex. If you did, `git log --oneline -1` will show it;
-  that is acceptable, but then delete the file and commit the deletion so the
-  check can see the intended end state is "untracked" — or simply create a
-  different scratch file.
+- Committing it by reflex. If you did, `git log --oneline -1` will show it.
+  Run `git rm --cached workspace/scratch.md`: that removes the file from
+  Git's tracking but leaves it on disk. Then commit with
+  `git commit -m "Stop tracking scratch file"`. `git status` now lists it
+  under *Untracked files*.
 
 ### Recovery
 

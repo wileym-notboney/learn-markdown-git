@@ -28,6 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   printing success.
 - `06.merge.commit` accepts a conflict resolved by keeping either side, or
   by combining them, not only the resolutions that change the main line.
+- Lesson 04 Exercise 4.3 recovery for a committed `scratch.md` now ends in
+  the state `04.scratch.untracked` checks for.
 
 ### Added
 

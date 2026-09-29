@@ -317,9 +317,12 @@ def _():
 def _():
     if read("workspace/scratch.md") is None:
         return ("workspace/scratch.md not found", "ls workspace", "Create it (Exercise 4.3)")
+    # Recovery from a committed scratch file is git rm --cached: it untracks the file
+    # and keeps it on disk, so this state stays reachable without loosening the rule.
+    # (ref: DL-006)
     if tracked("workspace/scratch.md") or staged("workspace/scratch.md"):
         return ("scratch.md is staged or committed; it should be untracked", "git status",
-                "git restore --staged workspace/scratch.md (if staged). If committed, see Common Mistakes 4.3")
+                "If staged: git restore --staged workspace/scratch.md. If committed: git rm --cached workspace/scratch.md, then commit (Common Mistakes 4.3)")
 
 
 # ---------------------------------------------------------------- lesson 05

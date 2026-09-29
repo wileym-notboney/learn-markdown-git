@@ -46,6 +46,15 @@ Entry template:
 - Re-evaluate: no
 - Decisions: DL-005 in tools/README.md.
 
+## 2026-09-29 — Lesson 04.3: recovering a committed scratch file reaches the checked state
+- Observed problem: Common Mistakes 4.3 told a learner who committed `scratch.md` to delete the file and commit the deletion; that leaves the file missing, and `04.scratch.untracked` requires it to exist and be untracked, so the check could never pass by following the text.
+- Evidence: adversarial review finding F8: commit scratch.md, delete it and commit the deletion, and 04.scratch.untracked fails with "workspace/scratch.md not found". `python tools/selftest.py` wall time at this commit: 11.4s.
+- Hypothesis: The recovery advice was written against the desired end state (untracked) without walking the steps to see whether they reach it.
+- Change made: Common Mistakes 4.3 now says `git rm --cached workspace/scratch.md`, then commit; the different-scratch-file suggestion is removed; the check's Try text names the same command. The check rule is unchanged. New selftest regression follows the text literally.
+- Expected improvement: a learner who committed the file by reflex can get to green without losing it.
+- Re-evaluate: yes — when lesson 04 progress data exists
+- Decisions: DL-006 in tools/README.md.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran
