@@ -41,6 +41,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `origin/main` and contained in `main`; `07.remote.pushed` reports "behind"
   and "diverged" separately. Lesson 07 Check Your Work says what the checker
   can and cannot verify.
+- Lesson 07 README formatting has been reverted from the previous commit to
+  keep the focus on the Check Your Work change; extra emphasis/table
+  alignment/indentation changes that were not part of the planned lesson edit
+  have been removed.
 
 ### Added
 

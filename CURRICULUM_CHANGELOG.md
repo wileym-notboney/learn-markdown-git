@@ -47,7 +47,6 @@ Entry template:
 - Decisions: DL-005 in tools/README.md.
 
 ## 2026-09-29 — Lesson 04.3: recovering a committed scratch file reaches the checked state
-
 - Observed problem: Common Mistakes 4.3 told a learner who committed `scratch.md` to delete the file and commit the deletion; that leaves the file missing, and `04.scratch.untracked` requires it to exist and be untracked, so the check could never pass by following the text.
 - Evidence: adversarial review finding F8: commit scratch.md, delete it and commit the deletion, and 04.scratch.untracked fails with "workspace/scratch.md not found". `python tools/selftest.py` wall time at this commit: 11.4s.
 - Hypothesis: The recovery advice was written against the desired end state (untracked) without walking the steps to see whether they reach it.
@@ -57,7 +56,6 @@ Entry template:
 - Decisions: DL-006 in tools/README.md.
 
 ## 2026-09-29 — Separate-commit checks require a commit per file
-
 - Observed problem: `03.commit.separate` counted learner commits (three or more) and `04.commits.two-more` counted commits touching each file, so one bundled commit plus unrelated or empty commits passed, and one combined edit passed as two. The old Recovery text also said bundling was acceptable, which would have made the stricter check unpassable.
 - Evidence: adversarial review finding F6: one commit holding hello, profile and notes, then a favorites commit and an empty commit, passed `03.commit.separate`. Selftest now walks both Recovery texts literally. `python tools/selftest.py` wall time at this commit: 14.1s.
 - Hypothesis: The lessons promise "one commit per thing"; the check should look at what each commit touched, since history carries that evidence, and the recovery path must lead to a state the check accepts.
@@ -67,7 +65,6 @@ Entry template:
 - Decisions: DL-007 in tools/README.md.
 
 ## 2026-09-29 — Markdown checks stop counting text inside code fences
-
 - Observed problem: The lesson 01 and 09 checks ran regular expressions over the raw file, so a profile wrapped in a code fence (shown as text, rendering none of it) passed all thirteen checks, and `**x**` in backticks counted as bold.
 - Evidence: adversarial review finding F7: the PROFILE fixture wrapped in a four-backtick fence passed every 01 check. `python tools/selftest.py` wall time at this commit: 15.5s.
 - Hypothesis: Structure only counts if it renders; a small line scanner following the CommonMark fence rules is enough for the subset the lessons teach, without a parser dependency.

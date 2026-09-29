@@ -42,15 +42,15 @@ to act as your practice server.
 
 ### The commands
 
-| Command                           | Does                                                              | Changes anything?     |
-| --------------------------------- | ----------------------------------------------------------------- | --------------------- |
-| `git remote -v`                   | lists remotes                                                     | no                    |
-| `git remote add origin <address>` | registers a remote                                                | config only           |
-| `git push -u origin main`         | sends `main`'s commits to origin; `-u` remembers the pairing      | remote only           |
-| `git push`                        | sends new commits to the remembered remote                        | remote only           |
-| `git fetch`                       | downloads new commits from the remote without touching your files | local metadata only   |
-| `git pull`                        | `fetch` then merge the remote's branch into yours                 | your branch and files |
-| `git clone <address>`             | makes a new local copy of a remote                                | creates a folder      |
+| Command | Does | Changes anything? |
+|---------|------|-------------------|
+| `git remote -v` | lists remotes | no |
+| `git remote add origin <address>` | registers a remote | config only |
+| `git push -u origin main` | sends `main`'s commits to origin; `-u` remembers the pairing | remote only |
+| `git push` | sends new commits to the remembered remote | remote only |
+| `git fetch` | downloads new commits from the remote without touching your files | local metadata only |
+| `git pull` | `fetch` then merge the remote's branch into yours | your branch and files |
+| `git clone <address>` | makes a new local copy of a remote | creates a folder |
 
 `git pull` can produce a merge conflict, exactly like Lesson 06, when both
 sides changed the same lines. Resolution is identical.
@@ -90,7 +90,7 @@ folders on one machine shows there is nothing magic about a server.
 ### Before You Start
 
 Lesson 06 passed; on `main`; clean working tree. Your terminal is in the
-course folder. Note the _parent_ folder's name (`cd ..` then `pwd` shows
+course folder. Note the *parent* folder's name (`cd ..` then `pwd` shows
 it; `cd` back into the course folder afterwards).
 
 Run `git remote -v`. If it already lists `origin` — it will if you got this
@@ -113,7 +113,7 @@ This changes a nickname only; nothing is downloaded or deleted.
    git init --bare -b main ../learn-git-remote.git
    ```
 
-   _Expected:_ `Initialized empty Git repository in .../learn-git-remote.git/`.
+   *Expected:* `Initialized empty Git repository in .../learn-git-remote.git/`.
    A new folder appeared next to the course folder. Do not open it in an
    editor; it has no normal files.
 
@@ -130,7 +130,7 @@ This changes a nickname only; nothing is downloaded or deleted.
    git push -u origin main
    ```
 
-   _Expected:_ a few lines of progress, then
+   *Expected:* a few lines of progress, then
    `branch 'main' set up to track 'origin/main'`.
 
 4. `git status` — first line should now say your branch is up to date with
@@ -161,7 +161,7 @@ This changes a nickname only; nothing is downloaded or deleted.
    git status
    ```
 
-   _Expected:_ "Your branch is behind 'origin/main' by 1 commit".
+   *Expected:* "Your branch is behind 'origin/main' by 1 commit".
    `cat workspace/reading-list.md` does not have the new line yet.
 
 8. Bring it in:
@@ -170,7 +170,7 @@ This changes a nickname only; nothing is downloaded or deleted.
    git pull
    ```
 
-   _Expected:_ `Fast-forward` and the file now has the line.
+   *Expected:* `Fast-forward` and the file now has the line.
 
 ### Check Your Work
 
@@ -188,7 +188,7 @@ and the clone's `git log`.
 
 - `git fetch` changed what `git status` said but not a single file.
   `git pull` changed files. That is the difference.
-- The clone had _everything_: all commits, the whole history. A clone is a
+- The clone had *everything*: all commits, the whole history. A clone is a
   full copy, not a download of the latest files.
 - Push and pull are symmetric. The "server" is just a repository that
   nobody edits directly.
@@ -203,7 +203,7 @@ and the clone's `git log`.
 - Clone prints `warning: remote HEAD refers to nonexistent ref` and the
   clone folder is empty: the bare repository was created without `-b main`.
   Delete the clone folder and run `git clone -b main ../learn-git-remote.git
-../learn-git-clone` instead.
+  ../learn-git-clone` instead.
 
 ### Recovery
 
@@ -254,7 +254,7 @@ depends on it.**
 
 3. Open the repository page. Browse to `workspace/profile.md`; it renders.
    Click a commit in the history view; the diff is the same one `git log
--p` shows.
+   -p` shows.
 
 4. Create a branch, change something in `workspace/notes/`, commit, then
    `git push -u origin <branch>`. GitHub will show a banner offering to open
