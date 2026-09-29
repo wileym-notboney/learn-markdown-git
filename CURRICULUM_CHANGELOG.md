@@ -16,6 +16,15 @@ Entry template:
 - Re-evaluate: yes/no — when
 ```
 
+## 2026-09-29 — Selftest tells a checker crash from an expected failure
+- Observed problem: `Learner.check` treated any nonzero exit as "fail", so a regression that expects a failing check also passed when `check.py` crashed.
+- Evidence: adversarial review of 2026-09-28: a `check.py` that raises at import makes every expected-fail assertion pass. `python tools/selftest.py` wall time at this commit: 7.0s.
+- Hypothesis: Only exit codes 0 and 1 without a traceback on stderr mean pass or fail; everything else is the harness failing.
+- Change made: `Learner.check` raises on other exit codes or a traceback; added `Learner.line` (output line for one check id) and `fresh_course` (one fixture per regression) for the regressions that follow.
+- Expected improvement: a broken checker fails selftest loudly instead of looking like an exercise that has not been done yet.
+- Re-evaluate: no
+- Decisions: DL-002, DL-003 in tools/README.md.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran

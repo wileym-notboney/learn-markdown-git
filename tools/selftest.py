@@ -49,15 +49,24 @@ class Learner:
 
     def check(self, lesson, expect):
         r = subprocess.run([PY, "tools/check.py", lesson], cwd=self.root, capture_output=True, text=True)
+        # check.py exits 1 for an unmet exercise and 2 for an operational error. Any other
+        # status, or a traceback, is a harness fault: reading a crash as an expected fail
+        # would let a regression pass on it. (ref: DL-003)
+        if r.returncode not in (0, 1) or "Traceback" in r.stderr:
+            raise RuntimeError(f"checker crashed on lesson {lesson}:\n{r.stdout}{r.stderr}")
         got = "pass" if r.returncode == 0 else "fail"
         if got != expect:
             raise AssertionError(f"lesson {lesson}: expected {expect}, got {got}\n{r.stdout}{r.stderr}")
         print(f"  lesson {lesson}: {expect} as expected")
         return r.stdout
 
+    @staticmethod
+    def line(out, cid):
+        """The check.py output line for one check id; its first word is 'ok' or '--'."""
+        return next(ln for ln in out.splitlines() if ln.split()[1:2] == [cid])
 
-def setup(tmp):
-    root = os.path.join(tmp, "course")
+
+def setup(root):
     shutil.copytree(SRC, root, ignore=shutil.ignore_patterns(".git", ".learning", "docs", "__pycache__"))
     l = Learner(root)
     l.git("init", "-q")
@@ -69,6 +78,11 @@ def setup(tmp):
     l.append("lessons/00-orientation/README.md", "\n<!-- maintainer edit after release -->\n")
     l.commit("fix(lesson-00): maintainer edit that must not count as learner work", "lessons/00-orientation/README.md")
     return l
+
+
+def fresh_course(tmp, name):
+    """A new course in tmp/name, so a regression owns its fixture."""
+    return setup(os.path.join(tmp, name))
 
 
 PROFILE = """# Ada
@@ -320,7 +334,7 @@ def lesson_09(l):
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         print("Simulating a learner in a temporary copy...")
-        l = setup(tmp)
+        l = setup(os.path.join(tmp, "course"))
         protected_files(l)
         commits_before_first_check(l)
         next_step_moves_forward(l)

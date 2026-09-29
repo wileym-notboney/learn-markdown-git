@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   checked, and says so when every lesson is complete.
 - Checks that need a missing file now report the missing file instead of
   describing its contents.
+- `selftest.py` reports a checker crash as a harness error instead of an
+  expected exercise failure.
 
 ### Added
 
