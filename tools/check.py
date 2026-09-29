@@ -74,11 +74,21 @@ def learner_commits(*paths, merges=None):
             if " " in line and not is_maintainer(line.split(" ", 1)[0])]
 
 
-def merge_touching(path):
-    """Merge commits (after the initial commit) whose result changes `path` relative to their first parent."""
+def merge_touching(path, both_sides=False):
+    """Learner merge commits that change `path` relative to their first parent.
+    With both_sides, only merges where each parent changed `path` since their
+    merge base: any resolution of a real conflict (ours, theirs, combined)
+    counts, and a merge that only one side touched does not."""
+    def touched(h):
+        if not both_sides:
+            return git("diff", "--name-only", f"{h}^1", h, "--", path)
+        # A conflict exists only when both sides changed `path` since their merge base.
+        # Comparing h^1 with h would reject a resolution that keeps main's line, and
+        # comparing h^1 with h^2 would accept a conflict-free merge. (ref: DL-005)
+        base = git("merge-base", f"{h}^1", f"{h}^2")
+        return base and all(git("diff", "--name-only", base, f"{h}^{n}", "--", path) for n in (1, 2))
     hashes = git("log", "--format=%H", "--merges").splitlines()
-    return [h for h in hashes
-            if git("diff", "--name-only", f"{h}^1", h, "--", path) and not is_maintainer(h)]
+    return [h for h in hashes if touched(h) and not is_maintainer(h)]
 
 
 def read(relpath):
@@ -344,7 +354,7 @@ FAVES = "workspace/favorites.md"
 
 @check("06", "06.merge.commit", "merge-conflicts", "a merge commit touches favorites.md")
 def _():
-    if not merge_touching(FAVES):
+    if not merge_touching(FAVES, both_sides=True):
         return ("no merge commit involving favorites.md", "git log --oneline --graph -6",
                 "Complete the merge: resolve, git add, git commit (Exercise 6.1)")
 

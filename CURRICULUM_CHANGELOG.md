@@ -36,6 +36,16 @@ Entry template:
 - Re-evaluate: no
 - Decisions: DL-004 in tools/README.md.
 
+## 2026-09-29 — Lesson 06 check accepts every valid conflict resolution
+
+- Observed problem: `merge_touching` compared a merge commit with its first parent, so a learner who resolved the conflict by keeping the line already on `main` produced a merge identical to `main` on that path and `06.merge.commit` failed.
+- Evidence: adversarial review finding F3: resolving with main's colour failed the check while purple passed. `python tools/selftest.py` wall time at this commit: 11.1s.
+- Hypothesis: A conflict needs both sides to have changed the file since their merge base, so requiring both parents to differ from the base accepts ours, theirs and combined resolutions and rejects a merge only one side touched.
+- Change made: `merge_touching(path, both_sides=True)` requires the path to differ from the merge base on both parents; 06.merge.commit uses it, the Lesson 09 check keeps the first-parent test. New selftest regression resolves the conflict three ways and requires 06.merge.commit to pass in each; a fast-forward and a no-conflict `--no-ff` merge still fail it.
+- Expected improvement: a correct resolution is never rejected for the value the learner chose.
+- Re-evaluate: no
+- Decisions: DL-005 in tools/README.md.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran

@@ -26,6 +26,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `setup_conflict.py` refuses to run while any tracked file is modified or
   any change is staged, and stops at the first failing git command instead of
   printing success.
+- `06.merge.commit` accepts a conflict resolved by keeping either side, or
+  by combining them, not only the resolutions that change the main line.
 
 ### Added
 

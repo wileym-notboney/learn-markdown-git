@@ -213,6 +213,42 @@ def helper_stops_on_git_failure(tmp):
     print("  conflict helper: a failed git command stops it")
 
 
+# Ours, theirs and combined resolutions pass; one-sided merges do not. (ref: DL-005)
+def conflict_resolutions_all_pass(tmp):
+    """Keeping main's line, the branch's line, or a third value all resolve the
+    conflict; the check must accept each, and reject a merge only one side changed."""
+    l = course_with_favorites(tmp, "resolve-ff")
+    l.git("switch", "-q", "-c", "side")
+    l.edit("workspace/favorites.md", "green", "blue")
+    l.commit("Change favorite color to blue", "workspace/favorites.md")
+    l.git("switch", "-q", "main")
+    l.git("merge", "-q", "--ff-only", "side")
+    out = l.check("06", "fail")
+    assert l.line(out, "06.merge.commit").split()[0] == "--", "a fast-forward wrongly counted as a conflict merge"
+    for colour in ("red", "blue", "purple"):
+        l = course_with_favorites(tmp, f"resolve-{colour}")
+        assert run_helper(l).returncode == 0
+        l.edit("workspace/favorites.md", "green", "red")
+        l.commit("Change favorite color to red", "workspace/favorites.md")
+        assert l.git("merge", "conflict-practice", ok=False).returncode != 0, "expected a conflict"
+        l.write("workspace/favorites.md", FAVORITES.replace("green", colour))
+        l.commit(f"Merge conflict-practice, choosing {colour}", "workspace/favorites.md")
+        l.git("branch", "-d", "conflict-practice")
+        out = l.check("06", "pass")
+        assert l.line(out, "06.merge.commit").split()[0] == "ok", f"resolution {colour} not accepted"
+    l = course_with_favorites(tmp, "resolve-one-sided")
+    l.git("switch", "-q", "-c", "side")
+    l.edit("workspace/favorites.md", "green", "blue")
+    l.commit("Change favorite color to blue", "workspace/favorites.md")
+    l.git("switch", "-q", "main")
+    l.write("workspace/other.md", "# Other\n")
+    l.commit("Add other", "workspace/other.md")
+    l.git("merge", "-q", "--no-ff", "--no-edit", "side")
+    out = l.check("06", "fail")
+    assert l.line(out, "06.merge.commit").split()[0] == "--", "a merge that only one side changed favorites.md wrongly counted as a conflict merge"
+    print("  conflict resolutions: ours, theirs and combined pass; one-sided merges do not")
+
+
 def commits_before_first_check(l):
     """A learner who does a whole lesson and only then runs the checker must
     still have their commits recognised (found by hand-walking lesson 03)."""
@@ -405,7 +441,8 @@ def main():
         lesson_08(l)
         lesson_09(l)
         for regression in (helper_refuses_staged_work,
-                           helper_stops_on_git_failure):
+                           helper_stops_on_git_failure,
+                           conflict_resolutions_all_pass):
             regression(tmp)
         r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr
