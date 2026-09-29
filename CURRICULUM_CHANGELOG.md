@@ -64,6 +64,15 @@ Entry template:
 - Re-evaluate: yes — when lesson 03 and 04 progress data exists
 - Decisions: DL-007 in tools/README.md.
 
+## 2026-09-29 — Markdown checks stop counting text inside code fences
+- Observed problem: The lesson 01 and 09 checks ran regular expressions over the raw file, so a profile wrapped in a code fence (shown as text, rendering none of it) passed all thirteen checks, and `**x**` in backticks counted as bold.
+- Evidence: adversarial review finding F7: the PROFILE fixture wrapped in a four-backtick fence passed every 01 check. `python tools/selftest.py` wall time at this commit: 15.5s.
+- Hypothesis: Structure only counts if it renders; a small line scanner following the CommonMark fence rules is enough for the subset the lessons teach, without a parser dependency.
+- Change made: `split_fences` (backtick and tilde fences, closing fence at least as long, unclosed fence runs to end of file) and `strip_inline_code` in `tools/check.py`; code-block rules test the extracted blocks, and the Lesson 09 rule requires an info string. Indented code blocks are not detected (outside the taught subset). Three selftest cases: fenced, unclosed tilde, and a nested example fence.
+- Expected improvement: a learner cannot reach green by pasting the exercise inside a code block; rendered-preview checking remains the learner's job.
+- Re-evaluate: yes — when lesson 01 and 09 progress data exists
+- Decisions: DL-008 in tools/README.md.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran

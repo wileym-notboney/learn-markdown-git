@@ -331,6 +331,27 @@ def bundled_32_recovery_as_written(tmp):
     print("  lesson 03.2 recovery: reaches 03.commit.separate")
 
 
+def fenced_profile_rejected(tmp):
+    """Markdown shown inside a code fence is not rendered Markdown."""
+    l = fresh_course(tmp, "fenced")
+    l.write("workspace/profile.md", "````text\n" + PROFILE + "````\n")
+    out = l.check("01", "fail")
+    for cid in ("01.profile.h1", "01.profile.bold", "01.profile.link"):
+        assert l.line(out, cid).split()[0] == "--", f"{cid} passed on fenced text"
+    l.write("workspace/profile.md", "~~~\n" + PROFILE)  # unclosed: runs to the end
+    out = l.check("01", "fail")
+    assert l.line(out, "01.profile.h1").split()[0] == "--", "an unclosed tilde fence was read as prose"
+    print("  fenced profile: rejected, unclosed fence included")
+
+
+def nested_example_fence_ok(tmp):
+    """A four-backtick fence that shows a three-backtick example is one block."""
+    l = fresh_course(tmp, "nested")
+    l.write("workspace/profile.md", PROFILE + "\n## Fence example\n\n````markdown\n```bash\ngit status\n```\n````\n")
+    l.check("01", "pass")
+    print("  nested example fence: profile still passes")
+
+
 def scratch_recovery_as_written(tmp):
     """Lesson 04 Common Mistakes: a committed scratch file must be recoverable
     by the steps the lesson gives, without losing the file."""
@@ -543,7 +564,9 @@ def main():
                            bundled_commit_rejected,
                            combined_edit_rejected,
                            bundled_41_recovery_as_written,
-                           bundled_32_recovery_as_written):
+                           bundled_32_recovery_as_written,
+                           fenced_profile_rejected,
+                           nested_example_fence_ok):
             regression(tmp)
         r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr

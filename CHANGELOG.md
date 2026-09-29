@@ -34,6 +34,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   only their own file or folder, not just enough commits overall. Recovery
   text in Exercises 3.2 and 4.1 now tells a learner who bundled the files how
   to reach the checked state.
+- The Lesson 01 and Lesson 09 Markdown checks ignore fenced code blocks and
+  inline code spans, so Markdown shown as an example no longer counts as
+  Markdown used. Code-block rules test the fenced blocks themselves.
 
 ### Added
 

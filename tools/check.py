@@ -7,6 +7,14 @@ Each check is a small function registered with the lesson it belongs to and
 the concept it tests. A check returns None when satisfied, or a
 (problem, look, try) triple: what is wrong, a command to inspect the state,
 and what to do about it. review.py imports CHECKS to map failures to concepts.
+
+The Markdown checks for lessons 01 and 09 read what a learner would see
+rendered: top-level fenced code blocks (backtick or tilde, closed by the same
+character at least as long; an unclosed fence runs to the end of the file, as
+in CommonMark) and inline code spans are set aside before headings, emphasis,
+links and lists are matched. Indented code blocks are outside the taught
+subset and are not detected. The checker cannot see a rendered preview;
+looking at one stays the learner's job.
 """
 import json
 import os
@@ -113,6 +121,45 @@ def has(pattern, text):
     return re.search(pattern, text, re.MULTILINE) is not None
 
 
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def split_fences(text):
+    """Split Markdown into (prose, blocks). blocks is a list of (info, body)
+    for the top-level fenced code blocks; prose is the text with every fence
+    and its contents blanked, so line structure is unchanged."""
+    prose, blocks, fence = [], [], None  # fence: (marker, info, body lines)
+    for line in text.split("\n"):
+        if fence is None:
+            m = FENCE.match(line)
+            if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+                fence = (m.group(1), m.group(2).strip(), [])
+                line = ""
+        else:
+            marker, info, body = fence
+            s = line.strip()
+            if len(line) - len(line.lstrip(" ")) <= 3 and len(s) >= len(marker) and set(s) == {marker[0]}:
+                blocks.append((info, "\n".join(body)))
+                fence = None
+            else:
+                body.append(line)
+            line = ""
+        prose.append(line)
+    if fence:
+        blocks.append((fence[1], "\n".join(fence[2])))
+    return "\n".join(prose), blocks
+
+
+def strip_inline_code(prose):
+    """Blank out backtick code spans so `**x**` is not read as bold."""
+    return re.sub(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", lambda m: " " * len(m.group()), prose)
+
+
+def has_prose(pattern, text):
+    """`pattern` matches Markdown outside fenced blocks and inline code."""
+    return has(pattern, strip_inline_code(split_fences(text)[0]))
+
+
 def broken_links(folder):
     """Relative links in every .md under folder whose target file does not exist."""
     broken = []
@@ -175,13 +222,22 @@ def _():
 PROFILE = "workspace/profile.md"
 
 
-def profile_check(cid, concept, desc, pattern, problem, tip):
+def profile_check(cid, concept, desc, pattern, problem, tip, target="prose"):
+    """target: 'prose' (outside fences and inline code), 'inline' (outside
+    fences, inline code kept) or 'blocks' (a fenced block exists; no pattern)."""
     @check("01", cid, concept, desc)
     def _():
         text = read(PROFILE)
         if text is None:
             return (f"{PROFILE} was not found", "ls workspace", "Create it (Exercise 1.1)")
-        if not has(pattern, text):
+        prose, blocks = split_fences(text)
+        if target == "blocks":
+            found = bool(blocks)
+        elif target == "inline":
+            found = has(pattern, prose)
+        else:
+            found = has_prose(pattern, text)
+        if not found:
             return (problem, f"cat {PROFILE}", tip)
 
 
@@ -194,13 +250,13 @@ profile_check("01.profile.bold", "emphasis", "has bold text", r"\*\*\S[^*]*\S\*\
 profile_check("01.profile.italic", "emphasis", "has italic text", r"(?<!\*)\*[^*\s][^*]*\*(?!\*)|(?<!_)_[^_\s][^_]*_(?!_)",
               "no *italic* text", "Wrap a word in single stars: *word*")
 profile_check("01.profile.inline-code", "inline-code", "has inline code", r"`[^`\n]+`",
-              "no `inline code`", "Wrap a command or program name in backticks")
+              "no `inline code`", "Wrap a command or program name in backticks", target="inline")
 profile_check("01.profile.list", "lists", "has a list", r"^\s*([-*+]|\d+\.) \S",
               "no list found", "Lines starting with '- ' or '1. '")
 profile_check("01.profile.nested", "lists", "has a nested list item", r"^\s*([-*+]|\d+\.) \S.*\n(\s*([-*+]|\d+\.) .*\n)*?\s{2,}([-*+]|\d+\.) \S",
               "no indented list item under another item", "Indent a '- ' line by two or more spaces below a list item")
-profile_check("01.profile.code-block", "code-blocks", "has a fenced code block", r"^```[\s\S]*?^```",
-              "no fenced code block (three backticks, content, three backticks)", "See Exercise 1.2")
+profile_check("01.profile.code-block", "code-blocks", "has a fenced code block", None,
+              "no fenced code block (three backticks, content, three backticks)", "See Exercise 1.2", target="blocks")
 profile_check("01.profile.link", "links", "has a link", r"(?<!!)\[[^\]]+\]\([^)\s]+\)",
               "no [text](url) link", "Add a link in the Links section (Exercise 1.3)")
 profile_check("01.profile.image", "images", "has an image with alt text", r"!\[[^\]]+\]\([^)\s]+\)",
@@ -485,7 +541,7 @@ CAP_RULES = [
     ("ordered", r"^\s*\d+\. \S", "an ordered list"),
     ("unordered", r"^\s*[-*+] (?!\[)\S", "an unordered list"),
     ("link", r"(?<!!)\[[^\]]+\]\([^)\s]+\)", "a link"),
-    ("code", r"^```[a-z]+\n[\s\S]*?^```", "a fenced code block with a language"),
+    ("code", None, "a fenced code block with a language"),  # tested on the extracted blocks
     ("table", r"^\|.*\|\s*\n\|?\s*:?-{3,}", "a table"),
     ("checklist", r"^\s*- \[[ x]\] \S", "a checklist"),
 ]
@@ -496,7 +552,9 @@ def _():
     text = read(f"{CAP}/README.md")
     if text is None:
         return (f"{CAP}/README.md not found", "ls workspace/capstone", "Create it on your capstone branch")
-    missing = [label for _, pat, label in CAP_RULES if not has(pat, text)]
+    blocks = split_fences(text)[1]
+    missing = [label for key, pat, label in CAP_RULES
+               if not (any(info for info, _ in blocks) if key == "code" else has_prose(pat, text))]
     if missing:
         return ("missing: " + ", ".join(missing), f"cat {CAP}/README.md", "See the Markdown outcomes list in Exercise 9.1")
 
