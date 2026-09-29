@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `LEARNINGS.md`: retrospective on the 2026-09-29 remediation session.
 - Adversarial review of the tooling (`docs/adversarial-review-2026-09-28.md`)
   and the remediation plan that implements its findings
   (`docs/superpowers/plans/2026-09-29-adversarial-review-remediation.md`).
