@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Adversarial review of the tooling (`docs/adversarial-review-2026-09-28.md`)
+  and the remediation plan that implements its findings
+  (`docs/superpowers/plans/2026-09-29-adversarial-review-remediation.md`).
+
 ### Fixed
 
 - Commits made before the first `check.py` run are now recognised as the
