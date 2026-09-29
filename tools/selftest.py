@@ -7,6 +7,7 @@ Copies the course into a temp folder, makes the initial commit, then performs
 each lesson's exercise the way the instructions say. After each lesson it
 asserts that check.py fails before the work is done and passes after.
 """
+import json
 import os
 import shutil
 import subprocess
@@ -395,6 +396,29 @@ def local_edits_not_pull(tmp):
     print("  local edits: not accepted as a pull")
 
 
+# 'all' is an overview; only a lesson run is evidence for that lesson. (ref: DL-011)
+def all_is_read_only(tmp):
+    """check.py all is an overview: it must not write progress."""
+    l = fresh_course(tmp, "all-readonly")
+    l.check("all", "fail")
+    assert not os.path.exists(os.path.join(l.root, ".learning", "progress.json")), "'all' wrote progress"
+    print("  check all: writes no progress")
+
+
+def rechecks_do_not_rewrite_first_pass(tmp):
+    """Failing after the first pass is a recheck, not more friction learning the lesson."""
+    l = fresh_course(tmp, "rechecks")
+    l.write("workspace/hello.md", "# Hello\n")
+    l.check("00", "pass")
+    l.write("workspace/hello.md", "no heading\n")
+    for _ in range(3):
+        l.check("00", "fail")
+    with open(os.path.join(l.root, ".learning", "progress.json"), encoding="utf-8") as fh:
+        rec = json.load(fh)["lessons"]["00"]
+    assert (rec["fails_before_pass"], rec["fails"], rec["rechecks"]) == (0, 0, 3), rec
+    print("  rechecks: first pass stays frozen")
+
+
 def scratch_recovery_as_written(tmp):
     """Lesson 04 Common Mistakes: a committed scratch file must be recoverable
     by the steps the lesson gives, without losing the file."""
@@ -611,7 +635,9 @@ def main():
                            fenced_profile_rejected,
                            nested_example_fence_ok,
                            local_edits_not_pull,
-                           malformed_progress_preserved):
+                           malformed_progress_preserved,
+                           all_is_read_only,
+                           rechecks_do_not_rewrite_first_pass):
             regression(tmp)
         r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr

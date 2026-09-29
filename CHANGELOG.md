@@ -45,6 +45,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   untouched) instead of replacing it with an empty history, and saves
   progress through a temporary file and `os.replace`. `review.py` skips
   files that are not progress records and says which.
+- `check.py all` no longer records progress. A failing run after a lesson
+  is complete counts as a recheck and leaves `fails` and `failed_checks`
+  alone; the first completion stores `fails_before_pass`.
+- `review.py` no longer reports "abandoned" or "trivial pass", which were
+  derived from timestamps that only show when the checker ran. "Hard to pass"
+  uses `fails_before_pass` and ignores records that lack it.
 - Lesson 07 README formatting has been reverted from the previous commit to
   keep the focus on the Check Your Work change; extra emphasis/table
   alignment/indentation changes that were not part of the planned lesson edit

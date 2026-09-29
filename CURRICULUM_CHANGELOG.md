@@ -92,6 +92,15 @@ Entry template:
 - Re-evaluate: no
 - Decisions: DL-010 in tools/README.md.
 
+## 2026-09-29 — Curriculum metrics only claim what the data supports
+- Observed problem: `review.py` inferred abandonment from a later lesson having a record and triviality from a sub-minute gap between two check runs; neither is measured. `check.py all` recorded every lesson as started, and failures after a pass raised `fails`, so both distorted "hard to pass" and "difficulty jump".
+- Evidence: adversarial review finding F4: running `check.py all` on an untouched course created a record for every lesson; three failing rechecks after a pass changed `fails` from 0 to 3. `python tools/selftest.py` wall time at this commit: 16.7s.
+- Hypothesis: Deleting signals the data cannot support is smaller and more honest than a new schema version; additive keys read with `.get` keep existing files valid.
+- Change made: `check.py all` is read-only; `record_run` counts rechecks separately and freezes `fails_before_pass`; `review.py` drops the two signals, their table columns and classification branches, and renames the Started column to Records. README and CURRICULUM_REVIEW.md describe what is and is not measured (CURRICULUM_REVIEW.md is outside the original file list because its signal table documented the removed signals). Two selftest regressions.
+- Expected improvement: a maintainer is only pointed at lessons by evidence the tool actually has; a learner running `all` does not change their own record.
+- Re-evaluate: yes — when real progress files exist, to see whether "hard to pass" alone is enough
+- Decisions: DL-011, DL-012 in tools/README.md.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran

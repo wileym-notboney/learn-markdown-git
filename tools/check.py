@@ -683,13 +683,20 @@ def record_run(data, lesson, failures):
     rec = lesson_record(data, lesson)
     rec["attempts"] += 1
     rec["last_run"] = now()
-    if failures:
+    # The first pass freezes fails_before_pass. Later failures only count as rechecks,
+    # so review.py measures friction of learning the lesson, not later regressions.
+    # (ref: DL-011)
+    if failures and rec["completed"]:
+        rec["rechecks"] = rec.get("rechecks", 0) + 1  # a failure after the first pass is not friction learning it
+    elif failures:
         rec["fails"] += 1
         for f in failures:
             rec["failed_checks"][f.id] = rec["failed_checks"].get(f.id, 0) + 1
     else:
         rec["passes"] += 1
-        rec["completed"] = rec["completed"] or now()
+        if not rec["completed"]:
+            rec["completed"] = now()
+            rec["fails_before_pass"] = rec["fails"]
     data["current_lesson"] = next((l for l in lesson_ids()
                                    if not data["lessons"].get(l, {}).get("completed")), "09")
 
@@ -718,8 +725,9 @@ def warn_protected():
         print("      Look: git diff <file>    Try: git restore <file> if you did not mean to edit it.\n")
 
 
-def run_lesson(lesson, data):
-    """Run one lesson's checks, print educational output, record progress. Returns failures."""
+def run_lesson(lesson, data, record=True):
+    """Run one lesson's checks and print educational output; with record=True
+    also update progress. Returns failures."""
     checks = [c for c in CHECKS if c.lesson == lesson]
     print(f"Lesson {lesson} — {lesson_title(lesson)}")
     failures, last_problem = [], None
@@ -738,8 +746,9 @@ def run_lesson(lesson, data):
         print(f"        Look: {look}")
         print(f"        Try:  {fix}")
     print(f"  {len(checks) - len(failures)} of {len(checks)} checks passed.")
-    record_run(data, lesson, failures)
-    recommend_drills(data, lesson, failures)
+    if record:
+        record_run(data, lesson, failures)
+        recommend_drills(data, lesson, failures)
     return failures
 
 
@@ -772,13 +781,15 @@ def main(argv):
         print(f"Unknown lesson {target!r}. Use 00–09, 'all', or nothing for the current lesson.")
         return 2
     warn_protected()
+    record = target != "all"  # 'all' is a read-only overview; only a lesson run is evidence for that lesson
     failed = 0
     for lesson in lessons:
-        failed += len(run_lesson(lesson, data))
+        failed += len(run_lesson(lesson, data, record))
         print()
-    save_progress(data)
+    if record:
+        save_progress(data)
     if failed == 0:
-        print(next_step(data, lessons[-1]))
+        print(next_step(data, lessons[-1]) if record else "All checks passed for every lesson. Nothing was recorded.")
     return 1 if failed else 0
 
 
