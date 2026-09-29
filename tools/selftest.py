@@ -155,6 +155,64 @@ GIT_COMMANDS = """# Git commands
 """
 
 
+FAVORITES = "# Favorites\n\n- Favorite color: green\n- Favorite food: bread\n- Favorite tool: git\n"
+
+
+def course_with_favorites(tmp, name):
+    l = fresh_course(tmp, name)
+    l.write("workspace/favorites.md", FAVORITES)
+    l.commit("Add favorites", "workspace/favorites.md")
+    return l
+
+
+def run_helper(l):
+    return subprocess.run([PY, "tools/setup_conflict.py"], cwd=l.root, capture_output=True, text=True)
+
+
+# Refusal must leave the index, HEAD and branches exactly as found. (ref: DL-004)
+def helper_refuses_staged_work(tmp):
+    """setup_conflict.py commits with a plain git commit, which takes the whole
+    index; it must refuse rather than sweep in work it did not create."""
+    l = course_with_favorites(tmp, "helper-staged")
+    l.write("workspace/hello.md", "# Hello\n")
+    l.write("workspace/profile.md", "# Ada\n")
+    l.commit("Add hello and profile", "workspace/hello.md", "workspace/profile.md")
+
+    def refuses(why):
+        state = lambda: [l.git(*a).stdout for a in (("status", "--porcelain"), ("rev-parse", "HEAD"), ("branch", "--list"))]
+        before = state()
+        r = run_helper(l)
+        assert r.returncode == 1 and state() == before, f"helper did not refuse cleanly with {why}:\n{r.stdout}{r.stderr}"
+
+    l.write("workspace/other.md", "unrelated\n")
+    l.git("add", "workspace/other.md")
+    refuses("a staged unrelated file")
+    l.git("rm", "-q", "--cached", "workspace/other.md")
+    os.remove(os.path.join(l.root, "workspace/other.md"))
+    l.git("rm", "-q", "workspace/hello.md")
+    refuses("a staged deletion")
+    l.git("restore", "--staged", "--worktree", "workspace/hello.md")
+    l.append("workspace/profile.md", "one\n")
+    l.git("add", "workspace/profile.md")
+    l.append("workspace/profile.md", "two\n")
+    refuses("a partially staged edit")
+    print("  conflict helper: refuses staged and modified work, changing nothing")
+
+
+def helper_stops_on_git_failure(tmp):
+    """A failing git command must not be reported as success."""
+    if os.name == "nt":
+        print("  conflict helper failure test: skipped (needs a POSIX hook)")
+        return
+    l = course_with_favorites(tmp, "helper-hook")
+    hook = os.path.join(l.root, ".git", "hooks", "pre-commit")
+    l.write(".git/hooks/pre-commit", "#!/bin/sh\nexit 1\n")
+    os.chmod(hook, 0o755)
+    r = run_helper(l)
+    assert r.returncode == 1 and "Created branch" not in r.stdout, f"failed commit reported as success:\n{r.stdout}{r.stderr}"
+    print("  conflict helper: a failed git command stops it")
+
+
 def commits_before_first_check(l):
     """A learner who does a whole lesson and only then runs the checker must
     still have their commits recognised (found by hand-walking lesson 03)."""
@@ -231,7 +289,7 @@ def lesson_05(l):
 def lesson_06(l):
     l.write("workspace/favorites.md", "# Favorites\n\n- Favorite color: green\n- Favorite food: bread\n- Favorite tool: git\n")
     l.commit("Add favorites", "workspace/favorites.md")
-    r = subprocess.run([PY, "tools/setup_conflict.py"], cwd=l.root, capture_output=True, text=True)
+    r = run_helper(l)
     assert r.returncode == 0, r.stdout + r.stderr
     l.edit("workspace/favorites.md", "green", "red")
     l.commit("Change favorite color to red", "workspace/favorites.md")
@@ -346,6 +404,9 @@ def main():
         lesson_07(l, tmp)
         lesson_08(l)
         lesson_09(l)
+        for regression in (helper_refuses_staged_work,
+                           helper_stops_on_git_failure):
+            regression(tmp)
         r = subprocess.run([PY, "tools/review.py", "--selfcheck"], cwd=l.root, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr
         r = subprocess.run([PY, "tools/review.py"], cwd=l.root, capture_output=True, text=True)

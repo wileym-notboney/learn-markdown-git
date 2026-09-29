@@ -17,6 +17,7 @@ Entry template:
 ```
 
 ## 2026-09-29 — Selftest tells a checker crash from an expected failure
+
 - Observed problem: `Learner.check` treated any nonzero exit as "fail", so a regression that expects a failing check also passed when `check.py` crashed.
 - Evidence: adversarial review of 2026-09-28: a `check.py` that raises at import makes every expected-fail assertion pass. `python tools/selftest.py` wall time at this commit: 7.0s.
 - Hypothesis: Only exit codes 0 and 1 without a traceback on stderr mean pass or fail; everything else is the harness failing.
@@ -24,6 +25,16 @@ Entry template:
 - Expected improvement: a broken checker fails selftest loudly instead of looking like an exercise that has not been done yet.
 - Re-evaluate: no
 - Decisions: DL-002, DL-003 in tools/README.md.
+
+## 2026-09-29 — Conflict helper no longer commits unrelated work or reports false success
+
+- Observed problem: `tools/setup_conflict.py` ran a plain `git commit`, which commits the whole index, so anything the learner had staged landed on `conflict-practice`; and it ignored git's exit codes, so a failed commit still printed "Created branch".
+- Evidence: adversarial review findings F1 and F2, reproduced by staging an unrelated file and by a pre-commit hook that exits 1. `python tools/selftest.py` wall time at this commit: 8.3s.
+- Hypothesis: Preflight has to look at the whole working tree, not just favorites.md, and every git call has to be checked; a helper that fails should report where it stopped and leave the repository as it is.
+- Change made: Whole-tree preflight (untracked files allowed), each git step return-code checked with the first failure reported, success printed only after the branch tip and current branch are verified. No reset or restore anywhere. Two selftest regressions.
+- Expected improvement: a learner with unrelated staged work is told to commit or stash it instead of losing it into the practice branch; a failed helper never reads as success.
+- Re-evaluate: no
+- Decisions: DL-004 in tools/README.md.
 
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
@@ -36,9 +47,9 @@ Entry template:
   lesson's work the way its text describes rather than the way the
   simulation did. The simulation always ran the checker before committing,
   so it could not reach fault (1) at all.
-- Hypothesis: "the learner's commits" had been defined by *time* (a baseline
+- Hypothesis: "the learner's commits" had been defined by _time_ (a baseline
   recorded on first run), and time is the one thing a learner controls
-  freely. Defining it by *content* — a commit touching learner files and not
+  freely. Defining it by _content_ — a commit touching learner files and not
   curriculum files — removes the ordering assumption entirely and also
   survives pulling curriculum updates.
 - Change made: replaced the stored baseline with `is_maintainer()` /

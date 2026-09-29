@@ -23,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   describing its contents.
 - `selftest.py` reports a checker crash as a harness error instead of an
   expected exercise failure.
+- `setup_conflict.py` refuses to run while any tracked file is modified or
+  any change is staged, and stops at the first failing git command instead of
+  printing success.
 
 ### Added
 
