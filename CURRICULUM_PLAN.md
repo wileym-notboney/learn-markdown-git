@@ -1,6 +1,10 @@
 # Curriculum Plan: Early-Course Improvements (Preliminary Outline)
 
-**Status:** Draft outline. Nothing here is approved or implemented.
+**Status:** Draft outline. Step A (Option 1, reorder Lesson 00) is
+implemented on this branch; B and C are not started. Decisions so far, from
+the maintainer: assume the learner has basic terminal knowledge and can look
+up the rest; reorder first; AI-agent trial runs are being considered before
+human testing (see "Trial testing" below).
 **Origin:** An outside review of the curriculum raised seven concerns. This
 plan covers three of them, in this order:
 
@@ -100,6 +104,9 @@ The tooling assumes two-digit lesson ids `00`–`09`:
   (`intro_at.get(concept, "00") <= lesson["id"]`) and treats `lesson \d\d`
   as a pointer to a later lesson. An id such as `00b` would sort correctly
   as text but would not match `\d\d`.
+- `check_layout` in `tools/validate_curriculum.py` also requires ids to be
+  contiguous (`00`, `01`, ... with no gaps), so a sub-id such as `00b` would
+  fail validation until that rule changes.
 - `tools/check.py`: registers checks per lesson id; the existing
   `00.hello.exists` and `00.hello.heading` checks belong to Exercise 0.1; the
   progress file starts at `current_lesson: "00"`; it uses `zfill(2)`; and its
@@ -153,13 +160,13 @@ stay the same, so `00.hello.exists` and `00.hello.heading` keep working.
 
 ### A.7 Open questions (need your decision)
 
-- [ ] Option 1 first, then split only if needed (recommended), or go
-      straight to the split?
+- [x] Option 1 first, then split only if needed. **Decided:** reorder first.
 - [ ] If we split: new id scheme (keep `00`, add a second id) versus
       renumbering 01–09? Renumbering breaks existing progress files.
 - [ ] Should `START_HERE.md` step 1 (`git status` before any explanation)
       move into Lesson 00, or stay as a smoke test?
-- [ ] Is there a real beginner available for the step 6 test?
+- [ ] Is there a real beginner available for the step 6 test? (Open. AI
+      agent trials may come first; see below.)
 
 ---
 
@@ -295,3 +302,24 @@ pass, hints requested, abandonment) but has only run on simulated data.
 4. Decision on whether to split; if yes, a separate plan.
 5. B: explain-back prompts (additive), one lesson concern per commit.
 6. C: scheduled retrieval blocks (additive), one lesson concern per commit.
+
+## Trial testing before a human (under consideration)
+
+The maintainer is considering AI agents trial-running the curriculum before
+a human does. Assessment, to be confirmed by trying it:
+
+- **Likely useful for:** mechanical faults (a command that errors, an
+  expected output that no longer matches, a broken link, a check that fails
+  on correct work, ambiguous step order). The earlier hand-walk of lessons
+  04 to 09 found three such faults that the self-test could not reach.
+- **Likely not useful for:** confusion, motivation, and whether a concept
+  sticks. An agent already knows Git, cannot un-know it, and does not get
+  bored or lost the way a beginner does. A clean agent run is not evidence
+  that a beginner will understand.
+- **If done:** use a fresh clone per run, tell the agent to follow only the
+  written lesson text (no outside knowledge of Git, and to report every point
+  where it had to guess), give it a persona with limited terminal skill, and
+  keep its own report as the data. Treat findings as proposals; a human reads
+  them before any change is committed, per `CLAUDE.md`.
+- **Still needed:** at least one real beginner, since agent runs do not
+  replace that.

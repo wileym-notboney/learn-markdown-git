@@ -5,8 +5,8 @@ Welcome. Follow these steps in order.
 ## 1. Find the folder
 
 This course is a folder on your computer. It contains this file. In your
-terminal, move into that folder. If you are not sure how, Lesson 00 shows
-you. Everything in this course assumes your terminal is **inside this
+terminal, move into that folder. If you are not sure how, Lesson 00 has a
+short refresher. Everything in this course assumes your terminal is **inside this
 folder** unless a lesson says otherwise.
 
 To confirm, run:
@@ -21,14 +21,15 @@ If you see `fatal: not a git repository`, you are in the wrong folder.
 ## 2. Open Lesson 00
 
 Read [lessons/00-orientation/README.md](lessons/00-orientation/README.md).
-It explains what a terminal is, what this repository is, how the lessons
-are structured, and how to check your work.
+It starts with a short terminal refresher and your first exercise, then
+explains what this repository is, how the lessons are structured, and how
+to check your work.
 
 ## 3. Work through the lessons in order
 
 | Lesson | Topic |
 |--------|-------|
-| [00](lessons/00-orientation/README.md) | Orientation: terminal, repository, how the course works |
+| [00](lessons/00-orientation/README.md) | Orientation: first exercise, repository, how the course works |
 | [01](lessons/01-markdown-basics/README.md) | Markdown fundamentals |
 | [02](lessons/02-practical-markdown/README.md) | Practical Markdown: tables, checklists, linking files |
 | [03](lessons/03-git-foundations/README.md) | Git mental model and first commits |

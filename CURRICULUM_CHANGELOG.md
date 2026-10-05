@@ -16,6 +16,31 @@ Entry template:
 - Re-evaluate: yes/no — when
 ```
 
+## 2026-10-05 — Lesson 00: first exercise before the explanations
+
+- Observed problem: Lesson 00 put about 970 words (653 of them Concepts)
+  before the learner did anything, covering seven topics at once.
+- Evidence: word counts of `lessons/00-orientation/README.md` by an outside
+  reading of the curriculum. No learner data exists yet (no
+  `.learning/progress.json` files have been collected), so this is a
+  hypothesis from reading, not an observed drop-off.
+- Hypothesis: a learner who can already open a terminal is better served by
+  doing Exercise 0.1 first and meeting each idea (plain text, Markdown,
+  untracked, repository, GitHub) after seeing it in their own output.
+- Change made: Concepts cut to a short refresher (about 310 words before
+  Exercise 0.1); explanations moved after Exercise 0.1 under "What you just
+  did"; the exercise template and checker explanation moved next to
+  Exercise 0.2. Exercise 0.1 and 0.2 content, checks, and ids are unchanged.
+  The course now states it assumes the learner can open a terminal and type
+  a command (`README.md`, `START_HERE.md`). Post-exercise sections use bold
+  lead-ins rather than `###` headings because
+  `tools/validate_curriculum.py` reads every `###` after an exercise heading
+  as one of that exercise's nine sections.
+- Expected improvement: lower time and effort to first success in Lesson 00;
+  no change to pass rates expected (checks are unchanged).
+- Re-evaluate: yes — after at least one real beginner has done Lesson 00
+  (see `CURRICULUM_PLAN.md`, A.6 step 6). Decide the split question then.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Lesson 00 now leads with a short terminal refresher and the first exercise;
+  the explanations of Markdown, Git, repositories, and GitHub follow it. The
+  course states that it assumes the learner can open a terminal.
+
 ### Fixed
 
 - Commits made before the first `check.py` run are now recognised as the
