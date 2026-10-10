@@ -100,8 +100,10 @@ folder. Most "it doesn't work" problems in the first week are "wrong folder".
    nothing to commit, working tree clean
    ```
 
-   If you see `fatal: not a git repository`, you are in the wrong folder.
-   Use `cd` to fix it. This command only reads; it changes nothing.
+   If the branch name is different (for example you are on a branch you
+   created), that is fine; the line to worry about is `fatal: not a git
+   repository`, which means you are in the wrong folder. Use `cd` to fix it.
+   This command only reads; it changes nothing.
 
 5. Look at what is here:
 
@@ -110,6 +112,8 @@ folder. Most "it doesn't work" problems in the first week are "wrong folder".
    ```
 
    You should see `README.md`, `lessons`, `workspace`, `tools`, and more.
+   (Inside `workspace/` there is already a `notes/` folder. Later lessons
+   use it; ignore it for now.)
 
 6. Create a file named `hello.md` inside the `workspace` folder. Open your
    editor, create a new file, type exactly this, and save it as
@@ -123,6 +127,11 @@ folder. Most "it doesn't work" problems in the first week are "wrong folder".
 
    Using VS Code? From the terminal, `code workspace/hello.md` opens (and
    creates) it directly.
+
+   No editor handy? Any plain-text editor works (not a word processor). On
+   macOS or Linux, `nano workspace/hello.md` opens a simple one inside the
+   terminal: type the text, press Ctrl+O then Enter to save, then Ctrl+X to
+   exit. On Windows, `notepad workspace/hello.md` offers to create the file.
 
 7. Confirm the file exists and has what you typed:
 
@@ -295,7 +304,9 @@ tool after every lesson.
 
 ### Before You Start
 
-Exercise 0.1 passed.
+Exercise 0.1 passed. If you skipped "What you just did" and "How the
+lessons work" above, this is a good moment to go back to them; the checker
+and "Getting unstuck" are explained there.
 
 ### Instructions
 
@@ -307,8 +318,9 @@ Exercise 0.1 passed.
 
    It changes nothing except its own progress file.
 
-2. Read the output. Each line has a status, an identifier like
-   `01.profile.exists`, and a sentence. Failing lines are followed by
+2. Read the output. Each line has a status (`ok` means that check passed,
+   `--` means it has not passed yet), an identifier like
+   `01.profile.h1`, and a sentence. Failing lines are followed by
    **Look** (a command to run to see the state yourself) and **Try** (what
    to do about it).
 

@@ -16,6 +16,36 @@ Entry template:
 - Re-evaluate: yes/no — when
 ```
 
+## 2026-10-10 — Lesson 00: four small fixes from agent trial runs
+
+- Observed problem: (1) Exercise 0.2 gave `01.profile.exists` as an example
+  checker id, but no such id exists; (2) Exercise 0.1 step 6 assumed VS Code
+  and gave no other way to create the file; (3) the checker's `ok` / `--`
+  markers were never explained, step 4 expected `On branch main` with no note
+  that the name may differ, and the existing `workspace/notes/` folder was
+  never mentioned; (4) nothing in Exercise 0.2 pointed back to the
+  explanation sections that now sit between the two exercises.
+- Evidence: three trial runs by a small, cheap model playing learner
+  personas, each in a fresh clone of the branch (reports from this session,
+  not stored in the repo). Item 1 was also confirmed directly against
+  `tools/check.py` (no `01.*.exists` id). Items 2 and 3 were reported by at
+  least two of the three runs; item 4 by one. Limits: all three runs read
+  the whole lesson before running any command, so none tested the new
+  reading order or a skimming learner, and the "nervous beginner" persona
+  was a simulation by an agent that knows shell basics. This is a smoke
+  test for mechanical faults, not evidence about real beginners.
+- Hypothesis: these are small gaps that a first-time learner would hit, and
+  closing them costs a few lines each.
+- Change made: replaced the example id with `01.profile.h1`; added a
+  plain-terminal editor option (nano on macOS and Linux, notepad on Windows;
+  not run in a trial); explained `ok` and `--`; noted that the branch name
+  may differ; mentioned `workspace/notes/`; added a sentence to Exercise 0.2
+  pointing back to the explanation sections. All additive; exercise
+  structure, checks and ids unchanged.
+- Expected improvement: fewer unexplained moments in Lesson 00 for learners
+  without VS Code, and a way back to the explanations for skimmers.
+- Re-evaluate: yes — with a real beginner (see `CURRICULUM_PLAN.md`).
+
 ## 2026-10-05 — Lesson 00: first exercise before the explanations
 
 - Observed problem: Lesson 00 put about 970 words (653 of them Concepts)

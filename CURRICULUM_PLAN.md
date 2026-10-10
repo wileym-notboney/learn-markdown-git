@@ -323,3 +323,25 @@ a human does. Assessment, to be confirmed by trying it:
   them before any change is committed, per `CLAUDE.md`.
 - **Still needed:** at least one real beginner, since agent runs do not
   replace that.
+
+### Result of the first agent trial (2026-10-10)
+
+Three runs by a small, cheap model (learner personas: some command line,
+nervous with the terminal, impatient skimmer), each in a fresh clone of the
+branch after the Lesson 00 reorder.
+
+- **Outcome:** all three completed Lesson 00 from the written text alone;
+  the checker passed 2 of 2 each time. In the one deliberate-mistake test
+  (`#Hello` without a space) the checker message identified the cause.
+- **Limits:** every run read the whole lesson with one command before doing
+  anything, so none tested the new reading order or a skimming learner. The
+  "nervous beginner" was a simulation by an agent that knows shell basics.
+  Treat this as a smoke test, not learner evidence.
+- **Acted on:** four small fixes (see `CURRICULUM_CHANGELOG.md`, 2026-10-10).
+- **Not acted on:** "wrong folder" recovery does not say how to find the
+  course folder (needs a judgment call); the reading order is still
+  untested; the `hello.md.txt` mistake was not tried.
+- **If run again:** force the persona by limiting what the agent may read at
+  each step (for example, give it only the section it has reached), rather
+  than letting it read the whole file first.
+- **Still needed:** a real beginner.
