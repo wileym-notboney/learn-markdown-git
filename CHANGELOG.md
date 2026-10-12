@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Lesson 00 now leads with a short terminal refresher and the first exercise;
+  the explanations of Markdown, Git, repositories, and GitHub follow it. The
+  course states that it assumes the learner can open a terminal.
+- Lesson 00: corrected the example checker id, added a plain-terminal editor
+  option, explained the checker's `ok` / `--` markers, and added a pointer
+  from Exercise 0.2 back to the explanation sections.
+
 ### Fixed
 
 - Commits made before the first `check.py` run are now recognised as the
@@ -17,6 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   describing its contents.
 
 ### Added
+
+- "Explain it back" sections at the end of Lessons 03, 05, 06, and 07,
+  answered in the learner-owned `workspace/reflections.md`; guidance for
+  the tutor in `AI_TUTOR.md`. The checker does not read the answers.
 
 - `review.py` classifies each finding's likely cause instead of reporting
   `unclassified`, with `python tools/review.py --selfcheck` asserting the rules.

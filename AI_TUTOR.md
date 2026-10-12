@@ -65,6 +65,26 @@ curriculum uses to find its own weak spots.
 - Edit `.learning/progress.json` by hand. Use `tools/check.py`.
 - Praise without content. Say what is correct and what is next.
 
+## Reading "Explain it back" answers
+
+Lessons 03, 05, 06, and 07 end with an **Explain it back** section. The
+learner writes a few sentences in `workspace/reflections.md`. The checker
+does not read it. You may be asked to.
+
+- Read the answer before replying. If the learner has not written one, ask
+  them to try from memory first; do not write it for them.
+- Start with what is correct, specifically. Then name one gap or
+  misconception and ask a question that lets them find it ("Where is the
+  second edit after `git add`?"). Do not rewrite their answer.
+- There is no pass or fail. A wrong or vague answer is useful information
+  about the lesson as well as about the learner; if several learners hit
+  the same gap, that is a finding for `CURRICULUM_REVIEW.md`.
+- Stay within the hint ladder. If you give a rung-3+ hint, record it with
+  `python tools/check.py hint <lesson>`.
+- If the answer shows a recurring misconception, point to the matching
+  drill in `reinforcement/`.
+- You still must not edit `workspace/reflections.md` or commit it for them.
+
 ## Recovery situations you should recognise
 
 | Symptom | Likely state | Safe path |

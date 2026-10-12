@@ -211,6 +211,32 @@ python tools/check.py 05
 
 ---
 
+## Explain it back
+
+Before you move on, write a short answer in your own words. This is not
+checked by `python tools/check.py` and nobody grades it. Its job is to show
+you what you can say without looking, which is different from what you can
+do by following steps.
+
+1. Add a new heading, `## Lesson 05`, to `workspace/reflections.md`.
+2. Under it, answer in two to four sentences, from memory:
+
+   *What is a branch, and why did `main` not have your new file until you merged? An analogy of your own is welcome.*
+3. Check yourself against the Concepts, and correct anything wrong or vague.
+4. Make sure `git status` says `On branch main`, then commit:
+
+   ```text
+   git add workspace/reflections.md
+   git commit -m "Add Lesson 05 reflection"
+   ```
+
+If you cannot answer without looking, that is normal and useful: re-read
+the Concepts, then try again from memory. You can also ask your tutor
+(see `AI_TUTOR.md`) to read `workspace/reflections.md`; it will give
+feedback, not a grade.
+
+---
+
 ## Optional Challenge 5.2 — Two branches at once
 
 ### Goal

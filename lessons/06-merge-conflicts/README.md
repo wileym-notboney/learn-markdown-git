@@ -196,3 +196,29 @@ markers remain, and that the branch is gone.
 - What information did Git *not* have that you had, which made the decision
   yours?
 - When would you keep both versions?
+
+---
+
+## Explain it back
+
+Before you move on, write a short answer in your own words. This is not
+checked by `python tools/check.py` and nobody grades it. Its job is to show
+you what you can say without looking, which is different from what you can
+do by following steps.
+
+1. Add a new heading, `## Lesson 06`, to `workspace/reflections.md`.
+2. Under it, answer in two to four sentences, from memory:
+
+   *Describe the conflict you resolved: what did the markers show, what did you decide, and what did you know that Git did not?*
+3. Check yourself against the Concepts, and correct anything wrong or vague.
+4. Make sure `git status` says `On branch main`, then commit:
+
+   ```text
+   git add workspace/reflections.md
+   git commit -m "Add Lesson 06 reflection"
+   ```
+
+If you cannot answer without looking, that is normal and useful: re-read
+the Concepts, then try again from memory. You can also ask your tutor
+(see `AI_TUTOR.md`) to read `workspace/reflections.md`; it will give
+feedback, not a grade.

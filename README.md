@@ -8,9 +8,10 @@ your Git history is a record of everything you learned.
 
 ## Who this is for
 
-People with little or no experience with terminals, Git, GitHub, or
-Markdown. Nothing is assumed beyond being able to install software and
-open a folder.
+People new to Git, GitHub, and Markdown. You should be able to install
+software, open a terminal, and type a command; you do not need to be
+fluent. If you have never opened a terminal, a short "terminal basics"
+tutorial for your system (ten minutes is enough) is the best place to start.
 
 ## What you will learn
 

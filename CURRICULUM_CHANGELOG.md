@@ -16,6 +16,101 @@ Entry template:
 - Re-evaluate: yes/no — when
 ```
 
+## 2026-10-12 — Explain it back (Lessons 03, 05, 06, 07)
+
+- Observed problem: nothing in the course captures whether a learner can say
+  the key ideas in their own words. Reflection questions are prompts with
+  nowhere to answer them, and the checker only confirms files and commits
+  exist.
+- Evidence: reading every Reflection section in the ten lessons. Of the
+  27 questions, most are opinion, recall or curiosity prompts
+  (for example 0.1 "pwd vs ls", 1.2 "numbered vs bulleted"). A handful ask
+  the learner to explain a mechanism: 3.1 (does the second edit go into the
+  staging area), 4.3 (one sentence each for `git add` and
+  `git restore --staged`), 5.1 (why `main` lacked the file), 6.1 (what Git
+  did not know), 7.1 (which repository is the real one). 4.3 already works
+  as an explain-back; Lesson 09 already has `RECOVERY.md`. No learner data
+  exists on whether any of this matters.
+- Hypothesis: asking the learner to write a short answer from memory at the
+  four lessons that introduce the core mental models (three places,
+  branches, conflicts, remotes) will surface gaps the checker cannot, and
+  gives the tutor something concrete to respond to. Writing and committing
+  the answer also repeats `git add` / `git commit` with a real message.
+- Change made: an **Explain it back** section at the end of Lessons 03, 05,
+  06, and 07 (before the optional exercise in 05 and 07), with one question
+  each, asking for two to four sentences in `workspace/reflections.md`,
+  checked against the Concepts by the learner, then committed on `main`. A
+  section in `AI_TUTOR.md` says how to read the answers (feedback, not a
+  grade; learner's file is never edited by the tutor); a line in
+  `CONTRIBUTING.md` records the convention. It uses a `##` heading rather
+  than a tenth `###` section because the validator requires exactly the
+  nine exercise sections. The checker, `curriculum.json` and the
+  selftest are unchanged, so the answers are not machine-checked. Lesson 09's
+  `RECOVERY.md` check is unchanged.
+- Expected improvement: more learners put the core ideas into words; tutors
+  can find misconceptions earlier. Risk: learners skip an unchecked task, or
+  copy phrases from Concepts; the wording asks for "from memory" and an
+  analogy of the learner's own to discourage that.
+- Re-evaluate: yes — with a real beginner, look at whether the answers show
+  understanding, whether the extra commit disturbs later lessons (Lesson 04
+  inspects recent commit subjects; the suggested messages follow its rules),
+  and whether the section gets skipped.
+
+## 2026-10-10 — Lesson 00: four small fixes from agent trial runs
+
+- Observed problem: (1) Exercise 0.2 gave `01.profile.exists` as an example
+  checker id, but no such id exists; (2) Exercise 0.1 step 6 assumed VS Code
+  and gave no other way to create the file; (3) the checker's `ok` / `--`
+  markers were never explained, step 4 expected `On branch main` with no note
+  that the name may differ, and the existing `workspace/notes/` folder was
+  never mentioned; (4) nothing in Exercise 0.2 pointed back to the
+  explanation sections that now sit between the two exercises.
+- Evidence: three trial runs by a small, cheap model playing learner
+  personas, each in a fresh clone of the branch (reports from this session,
+  not stored in the repo). Item 1 was also confirmed directly against
+  `tools/check.py` (no `01.*.exists` id). Items 2 and 3 were reported by at
+  least two of the three runs; item 4 by one. Limits: all three runs read
+  the whole lesson before running any command, so none tested the new
+  reading order or a skimming learner, and the "nervous beginner" persona
+  was a simulation by an agent that knows shell basics. This is a smoke
+  test for mechanical faults, not evidence about real beginners.
+- Hypothesis: these are small gaps that a first-time learner would hit, and
+  closing them costs a few lines each.
+- Change made: replaced the example id with `01.profile.h1`; added a
+  plain-terminal editor option (nano on macOS and Linux, notepad on Windows;
+  not run in a trial); explained `ok` and `--`; noted that the branch name
+  may differ; mentioned `workspace/notes/`; added a sentence to Exercise 0.2
+  pointing back to the explanation sections. All additive; exercise
+  structure, checks and ids unchanged.
+- Expected improvement: fewer unexplained moments in Lesson 00 for learners
+  without VS Code, and a way back to the explanations for skimmers.
+- Re-evaluate: yes — with a real beginner (see `CURRICULUM_PLAN.md`).
+
+## 2026-10-05 — Lesson 00: first exercise before the explanations
+
+- Observed problem: Lesson 00 put about 970 words (653 of them Concepts)
+  before the learner did anything, covering seven topics at once.
+- Evidence: word counts of `lessons/00-orientation/README.md` by an outside
+  reading of the curriculum. No learner data exists yet (no
+  `.learning/progress.json` files have been collected), so this is a
+  hypothesis from reading, not an observed drop-off.
+- Hypothesis: a learner who can already open a terminal is better served by
+  doing Exercise 0.1 first and meeting each idea (plain text, Markdown,
+  untracked, repository, GitHub) after seeing it in their own output.
+- Change made: Concepts cut to a short refresher (about 310 words before
+  Exercise 0.1); explanations moved after Exercise 0.1 under "What you just
+  did"; the exercise template and checker explanation moved next to
+  Exercise 0.2. Exercise 0.1 and 0.2 content, checks, and ids are unchanged.
+  The course now states it assumes the learner can open a terminal and type
+  a command (`README.md`, `START_HERE.md`). Post-exercise sections use bold
+  lead-ins rather than `###` headings because
+  `tools/validate_curriculum.py` reads every `###` after an exercise heading
+  as one of that exercise's nine sections.
+- Expected improvement: lower time and effort to first success in Lesson 00;
+  no change to pass rates expected (checks are unchanged).
+- Re-evaluate: yes — after at least one real beginner has done Lesson 00
+  (see `CURRICULUM_PLAN.md`, A.6 step 6). Decide the split question then.
+
 ## 2026-09-28 — Three faults found by hand-walking lessons 04–09
 
 - Observed problem: (1) a learner who completed lesson 03 and only then ran
