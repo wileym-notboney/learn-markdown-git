@@ -218,6 +218,34 @@ that at least one commit arrived via the remote.
 
 ---
 
+## Explain it back
+
+Before you move on, write a short answer in your own words. This is not
+checked by `python tools/check.py` and nobody grades it. Its job is to show
+you what you can say without looking, which is different from what you can
+do by following steps.
+
+1. Add a new heading, `## Lesson 07`, to `workspace/reflections.md`.
+2. Under it, answer in two to four sentences, from memory:
+
+   *Your course folder, the bare repository, and the clone each hold a copy of the history. What does `git push` move, and in which direction? What does `git pull` do? Which copy would a team treat as the shared one, and why?*
+3. Check yourself against the Concepts, and correct anything wrong or vague.
+4. Make sure `git status` says `On branch main`, then commit:
+
+   ```text
+   git add workspace/reflections.md
+   git commit -m "Add Lesson 07 reflection"
+   ```
+
+   You do not need to push this commit.
+
+If you cannot answer without looking, that is normal and useful: re-read
+the Concepts, then try again from memory. You can also ask your tutor
+(see `AI_TUTOR.md`) to read `workspace/reflections.md`; it will give
+feedback, not a grade.
+
+---
+
 ## Optional Exercise 7.2 — The same thing on GitHub (requires an account)
 
 ### Goal

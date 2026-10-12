@@ -27,6 +27,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- "Explain it back" sections at the end of Lessons 03, 05, 06, and 07,
+  answered in the learner-owned `workspace/reflections.md`; guidance for
+  the tutor in `AI_TUTOR.md`. The checker does not read the answers.
+
 - `review.py` classifies each finding's likely cause instead of reporting
   `unclassified`, with `python tools/review.py --selfcheck` asserting the rules.
 - Findings group by concept rather than by individual check.

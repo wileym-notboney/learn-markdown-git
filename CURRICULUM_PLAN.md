@@ -1,7 +1,8 @@
 # Curriculum Plan: Early-Course Improvements (Preliminary Outline)
 
 **Status:** Draft outline. Step A (Option 1, reorder Lesson 00) is
-implemented on this branch; B and C are not started. Decisions so far, from
+implemented on this branch; B (explain-back) is implemented in a first,
+unchecked form; C is not started. Decisions so far, from
 the maintainer: assume the learner has basic terminal knowledge and can look
 up the rest; reorder first; AI-agent trial runs are being considered before
 human testing (see "Trial testing" below).
@@ -222,8 +223,8 @@ completeness tool; understanding is reviewed by a person.
 
 ### B.5 Open questions
 
-- [ ] Is `workspace/reflections.md` the right home, or one file per lesson?
-- [ ] Should the checker only confirm presence, or not touch it at all?
+- [x] Is `workspace/reflections.md` the right home, or one file per lesson? **Decided (default, not yet tested with a learner):** one file, one `## Lesson NN` heading per answer.
+- [x] Should the checker only confirm presence, or not touch it at all? **Decided (default):** not touch it. Answers are read by the tutor, not machine-checked.
 - [ ] Where should the tightening of the capstone `RECOVERY.md` check
       (for example, requiring the command and a reason) fit in?
 
@@ -345,3 +346,14 @@ branch after the Lesson 00 reorder.
   each step (for example, give it only the section it has reached), rather
   than letting it read the whole file first.
 - **Still needed:** a real beginner.
+
+### Status of B (2026-10-12)
+
+Implemented: an **Explain it back** section in Lessons 03, 05, 06, and 07,
+`AI_TUTOR.md` guidance, a `CONTRIBUTING.md` note. Not done: the capstone
+`RECOVERY.md` check is not tightened (left open in B.5); no checker or
+selftest coverage, so a learner can skip the section without any signal; not
+tested with an agent or a person. A cheap next step is another agent trial
+that answers the four prompts from the written lesson text only and reports
+whether the commit and the later lessons still work. A real beginner is
+still needed to see whether the answers show understanding.

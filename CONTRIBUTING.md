@@ -39,6 +39,12 @@ Both must exit 0.
   Before You Start, Instructions, Check Your Work, What You Should Notice,
   Common Mistakes, Recovery, Reflection).
 - Add its checks to `tools/check.py` and its walkthrough to `tools/selftest.py`.
+- Lessons 03, 05, 06, and 07 end with an **Explain it back** section (a
+  `##` heading with a numbered list, not one of the nine `###` exercise
+  sections). Answers go in the learner-owned `workspace/reflections.md` and
+  are deliberately not checked by `tools/check.py`; see `AI_TUTOR.md` for
+  how the tutor reads them. Keep the question one that cannot be answered
+  by copying a sentence from the lesson.
 
 ## Writing style
 
